@@ -1,0 +1,10 @@
+[package]
+name = "torcher"
+version = "0.1.0"
+authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
+edition = "2018"
+license = "BSD-4-Clause"
+build = "build.rs"
+
+[dependencies]
+torcher_derive = { path = "torcher_derive" }
