@@ -30,6 +30,9 @@
 //! 
 //! All other structs are placeholder for mapping with Caffe2 
 //! tensor storage pointer.
+//! 
+//! All tensor storage type defined here implement Deref and DerefMut.
+//! It'll deref into underlying storage as Slice and SliceMut respectively.
 extern crate storage_derive;
 
 use std::ops::{Deref, DerefMut};

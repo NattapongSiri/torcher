@@ -1,10 +1,22 @@
 //! Basic tensor create and edit are provided by this crate.
 //! If the tensor is created based on existing storage, the 
-//! underlying storage will also be freed. So it's advised that
-//! all tensor created using unsafe operation shall be well plan
-//! on which one will live longest. All other shorter life tensor
-//! shall set call forget method on storage that return by method
-//! (storage)[trait.Tensor.html#tymethod.storage]
+//! underlying storage will be freed when tensor is freed.
+//! If user uses any of unsafe operation, it's essential to
+//! keep the based tensor live as long as all other tensors
+//! that got return from unsafe operation. Otherwise, it
+//! result in undefined behavior.
+//! 
+//! Be caution on using [data](trait.Tensor.html#tymethod.data) function.
+//! It always return entire backend data. For example:
+//! ```Rust
+//! let tensor = FloatTensor::new_with_size_1d(10);
+//! unsafe {
+//!     let narrowed = tensor.new_narrow(0, 2, 5);
+//!     // both tensor use the same backend storage
+//!     // so the line below is true.
+//!     assert_eq!(tensor.data(), narrowed.data());
+//! }
+//! ```
 //! 
 //! All supported Caffe2 tensors by this crate are following:
 //! - Byte tensor
@@ -19,6 +31,8 @@
 //!     - [ShortTensor](struct.ShortTensor.html) - stores i16
 //! 
 //! All other structs are used for manipulating C pointer of Caffe2 tensor.
+//! All tensors can be iterate when borrow or mutably borrowed as 
+//! those borrowed tensor implement IntoIterator.
 //! 
 //! # Safety
 //! All unsafe operation create new tensor instance but reuse existing
@@ -105,6 +119,7 @@ pub trait Tensor<T> {
     fn get_3d(&self, i: [usize; 3]) -> T;
     fn get_4d(&self, i: [usize; 4]) -> T;
     fn is_contiguous(&self) -> bool;
+    fn numel(&self) -> usize;
     fn resize_as(&mut self, ref_tensor: &Self) {
         let ref_shape = ref_tensor.shape();
 
@@ -142,8 +157,208 @@ pub trait Tensor<T> {
     fn shape(&self) -> (&[usize], &[usize]);
     fn size(&self, dim: usize) -> usize;
     fn storage(&mut self) -> &mut Option<Self::Storage>;
+    fn storage_offset(&self) -> usize;
     fn stride(&self, dim: usize) -> usize;
     fn squeeze(&self) -> Self;
+}
+
+/// An Iterator over tensor data.
+/// It'll return an underlying data, not a reference.
+/// This is because sometime, return a copy of data is
+/// faster than a reference.
+/// 
+/// In most case, user don't need to construct this struct directly.
+/// It can be use implicitly when user borrow tensor.
+/// 
+/// # Examples
+/// ```Rust
+/// use torcher::tensor::FloatTensor;
+/// let mut tensor = FloatTensor::new_with_size_1d(10);
+/// tensor.data().iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+/// for v in &tensor {
+///     dbg!(v)
+/// }
+/// ```
+pub struct TensorIterator<'a, T>
+where T: 'a
+{
+    cur_i: Vec<usize>,
+    cur_j: usize,
+    cur_offset: Vec<usize>,
+
+    data: &'a [T],
+    size: &'a [usize],
+    stride: &'a [usize]
+}
+
+impl<'a, T> TensorIterator<'a, T> {
+    pub fn new(data: &'a [T], size: &'a [usize], stride: &'a [usize]) -> TensorIterator<'a, T> {
+        let n = size.len() - 1;
+        TensorIterator {
+            cur_i: vec![0; n],
+            cur_j: 0,
+            cur_offset: vec![0; n],
+
+            data: data,
+            size: size,
+            stride: stride
+        }
+    }
+}
+
+impl<'a, T> Iterator for TensorIterator<'a, T>
+where T: Copy
+{
+    type Item=T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        fn update_cursor(cur_i: &mut [usize], cur_offset: &mut [usize], n: usize, offset: usize) {
+            cur_offset[n] += offset;
+
+            // reset offset and i for those dim after the next one.
+            for i in (n + 1)..cur_offset.len() {
+                cur_i[i] = 0;
+                cur_offset[i] = 0;
+            }
+        }
+
+        let mut n = self.size.len() - 1;
+
+        if self.cur_j < self.size[n] {
+            let offset = self.cur_i.iter().enumerate().fold(0, |o, (idx, _)| {
+                o + self.cur_offset[idx]
+            });
+
+            let result = Some(self.data[offset + self.cur_j]);
+            self.cur_j += 1;
+            result
+        } else {
+            n -= 1;
+
+            while n > 0 {
+                self.cur_i[n] += 1;
+                if self.cur_i[n] < self.size[n] {
+                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                    
+                    break;
+                } else {
+                    n -= 1;
+                }
+            }
+
+            if n == 0 {
+                self.cur_i[n] += 1;
+                if self.cur_i[n] < self.size[n] {
+                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                } else {
+                    return None;
+                }
+            }
+            self.cur_j = 0;
+            self.next()
+        }
+    }
+}
+
+/// An Iterator over tensor data.
+/// It'll return a mutable data reference.
+/// Such operation is considered unsafe, thought the
+/// iterator doesn't mark as unsafe. This is because signature
+/// defined by Iterator doesn't have unsafe mark.
+/// 
+/// In most case, user don't need to construct this struct directly.
+/// It can be use implicitly when user mutably borrow tensor.
+/// 
+/// # Safety
+/// It can be unsafe to iterating over &mut tensor.
+/// It consider unsafe because it may cause datarace.
+/// 
+/// # Examples
+/// ```Rust
+/// use torcher::tensor::FloatTensor;
+/// let mut tensor = FloatTensor::new_with_size_1d(10);
+/// (&mut tensor).into_iter().enumerate().for_each(|(i, v)| *v = i as f32);
+/// ```
+pub struct TensorIterMut<'a, T>
+where T: 'a
+{
+    cur_i: Vec<usize>,
+    cur_j: usize,
+    cur_offset: Vec<usize>,
+
+    data: &'a mut [T],
+    size: &'a [usize],
+    stride: &'a [usize]
+}
+
+impl<'a, T> TensorIterMut<'a, T> {
+    pub fn new(data: &'a mut [T], size: &'a [usize], stride: &'a [usize]) -> TensorIterMut<'a, T> {
+        let n = size.len() - 1;
+        TensorIterMut {
+            cur_i: vec![0; n],
+            cur_j: 0,
+            cur_offset: vec![0; n],
+
+            data: data,
+            size: size,
+            stride: stride
+        }
+    }
+}
+
+impl<'a, T> Iterator for TensorIterMut<'a, T> {
+    type Item=&'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        fn update_cursor(cur_i: &mut [usize], cur_offset: &mut [usize], n: usize, offset: usize) {
+            cur_offset[n] += offset;
+
+            // reset offset and i for those dim after the next one.
+            for i in (n + 1)..cur_offset.len() {
+                cur_i[i] = 0;
+                cur_offset[i] = 0;
+            }
+        }
+
+        let mut n = self.size.len() - 1;
+
+        if self.cur_j < self.size[n] {
+            let offset = self.cur_i.iter().enumerate().fold(0, |o, (idx, _)| {
+                o + self.cur_offset[idx]
+            });
+            // need unsafe raw pointer because self doesn't have lifetime but
+            // return item need lifetime
+            unsafe {
+                let result = Some(&mut *((&mut self.data[offset + self.cur_j]) as *mut T));
+                self.cur_j += 1;
+                result
+            }
+        } else {
+            n -= 1;
+
+            while n > 0 {
+                self.cur_i[n] += 1;
+                if self.cur_i[n] < self.size[n] {
+                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                    
+                    break;
+                } else {
+                    n -= 1;
+                }
+            }
+
+            if n == 0 {
+                self.cur_i[n] += 1;
+                if self.cur_i[n] < self.size[n] {
+                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                } else {
+                    return None;
+                }
+            }
+            self.cur_j = 0;
+            self.next()
+        }
+    }
 }
 
 #[TorchTensor(u8 = "ByteStorage")]
@@ -385,13 +600,13 @@ mod tests {
     #[test]
     fn float_narrow() {
         let mut storage = FloatStorage::new_with_size(10);
-        storage[2] = 2f32;
-        storage[3] = 1f32;
+        storage[4] = 2f32;
+        storage[5] = 1f32;
         unsafe {
-            let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], [2, 1]);
-            let mut sel = ts.new_narrow(1, 0, 2).new_narrow(0, 0, 2);
+            let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], [2, 1]);
+            let mut sel = ts.new_narrow(1, 1, 1).new_narrow(0, 1, 2);
             
-            assert_eq!("torch.xTensor of size 2x2", sel.desc());
+            assert_eq!("torch.xTensor of size 2x1", sel.desc());
             assert_eq!([2f32, 1f32] , sel.data()[0..2]);
         }
     }
@@ -422,6 +637,34 @@ mod tests {
         let storage = FloatStorage::new_with_size(10);
         let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
         assert!(ts.is_contiguous());
+    }
+
+    #[test]
+    fn float_iterator() {
+        let mut storage = FloatStorage::new_with_size(10);
+        for i in 0..storage.len() {
+            storage[i] = i as f32;
+        }
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let validator = &[1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+        (&ts).into_iter().enumerate().for_each(|(i, v)| {
+            assert_eq!(validator[i], v);
+        });
+    }
+
+    #[test]
+    fn float_iter_mut() {
+        let mut storage = FloatStorage::new_with_size(10);
+        for i in 0..storage.len() {
+            storage[i] = i as f32;
+        }
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let validator = &[1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+        (&mut ts).into_iter().enumerate().for_each(|(i, v)| {
+            assert_eq!(validator[i], *v);
+        });
     }
 
     #[test]

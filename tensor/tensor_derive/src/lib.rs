@@ -99,6 +99,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     let get_2d_fn = _make_ident(&c_ty, "_get2d");
     let get_3d_fn = _make_ident(&c_ty, "_get3d");
     let get_4d_fn = _make_ident(&c_ty, "_get4d");
+    let numel_fn = _make_ident(&c_ty, "_numel");
     let resize_0d_fn = _make_ident(&c_ty, "_resize0d");
     let resize_1d_fn = _make_ident(&c_ty, "_resize1d");
     let resize_2d_fn = _make_ident(&c_ty, "_resize2d");
@@ -113,6 +114,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     let set_4d_fn = _make_ident(&c_ty, "_set4d");
     let size_fn = _make_ident(&c_ty, "_size");
     let storage_fn = _make_ident(&c_ty, "_storage");
+    let storage_offset_fn = _make_ident(&c_ty, "_storageOffset");
     let stride_fn = _make_ident(&c_ty, "_stride");
     let squeeze_fn = _make_ident(&c_ty, "_squeeze");
 
@@ -157,6 +159,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #get_2d_fn(tensor: *const #c_ty_id, i: i64, j: i64) -> #t;
             fn #get_3d_fn(tensor: *const #c_ty_id, i: i64, j: i64, k: i64) -> #t;
             fn #get_4d_fn(tensor: *const #c_ty_id, i: i64, j: i64, k: i64, l: i64) -> #t;
+            fn #numel_fn(tensor: *const #c_ty_id) -> usize;
             fn #resize_0d_fn(tensor: *mut #c_ty_id);
             fn #resize_1d_fn(tensor: *mut #c_ty_id, size_1: i64);
             fn #resize_2d_fn(tensor: *mut #c_ty_id, size_1: i64, size_2: i64);
@@ -171,6 +174,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #set_4d_fn(tensor: *const #c_ty_id, i: i64, j: i64, k: i64, l: i64, v: #t);
             fn #size_fn(tensor: *const #c_ty_id, dim: c_int) -> i64;
             fn #storage_fn(tensor: *mut #c_ty_id) -> *mut #c_storage_ty_id;
+            fn #storage_offset_fn(tensor: *const #c_ty_id) -> i64;
             fn #stride_fn(tensor: *const #c_ty_id, dim: c_int) -> i64;
             fn #squeeze_fn(tensor: *mut #c_ty_id, res: *mut #c_ty_id);
         }
@@ -507,6 +511,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
+            fn numel(&self) -> usize {
+                unsafe {
+                    #numel_fn(self.tensor) as usize
+                }
+            }
+
             fn resize_0d(&mut self) {
                 unsafe {
                     self.size.clear();
@@ -630,6 +640,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 &mut self.storage
             }
 
+            fn storage_offset(&self) -> usize {
+                unsafe {
+                    #storage_offset_fn(self.tensor) as usize
+                }
+            }
+
             fn stride(&self, dim: usize) -> usize {
                 assert!(dim < self.stride.len());
                 unsafe {
@@ -677,6 +693,45 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     if !self.forget {
                         #free_fn(self.tensor);
                     }
+                }
+            }
+        }
+
+        impl<'a> IntoIterator for &'a #ident {
+            type Item = #t;
+            type IntoIter = TensorIterator<'a, #t>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                let offset = self.storage_offset();
+                let l = self.numel();
+
+                match self.storage {
+                    Some(ref storage) => {
+                        let offset = self.storage_offset();
+                        let (size, stride) = self.shape();
+
+                        TensorIterator::new(&storage[offset..(offset + self.numel())], size, stride)
+                    },
+                    None => {
+                        TensorIterator::new(&[], &[0], &[])
+                    }
+                }
+            }
+        }
+
+        impl<'a> IntoIterator for &'a mut #ident {
+            type Item = &'a mut #t;
+            type IntoIter = TensorIterMut<'a, #t>;
+
+            fn into_iter(self) -> Self::IntoIter {
+                // need unsafe because we both borrow and borrow mut on self at the same time.
+                unsafe {
+                    // borrow mut self here
+                    let data = &mut *(self.data() as *mut [#t]);
+                    // borrow self here
+                    let (size, stride) = self.shape();
+
+                    TensorIterMut::new(data, size, stride)
                 }
             }
         }
