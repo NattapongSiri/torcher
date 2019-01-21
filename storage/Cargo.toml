@@ -1,5 +1,5 @@
 [package]
-name = "torcher"
+name = "storage"
 version = "0.1.0"
 authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
 edition = "2018"
@@ -7,12 +7,4 @@ license = "BSD-4-Clause"
 build = "build.rs"
 
 [dependencies]
-storage = { path = "storage" }
-tensor = { path = "tensor" }
-
-[workspace]
-members = [
-    "common",
-    "storage",
-    "tensor"
-]
+storage_derive = { path = "storage_derive" }
