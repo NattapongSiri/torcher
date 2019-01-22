@@ -55,6 +55,8 @@ pub trait Tensor<T> {
     fn new() -> Self;
     /// Always return a new deep clone tensor with contiguous storage according to current size.
     /// In Python, it'll return the same Tensor if it's already contiguous.
+    /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
+    /// to check first if it's already contiguous.
     fn new_contiguous(&self) -> Self;
     /// Create shallow clone of Tensor that share the same storage as this tensor.
     /// This function always success unlike the same function provided by
@@ -65,17 +67,20 @@ pub trait Tensor<T> {
     /// See PyTorch documentation on narrow/view of tensor for more detail.
     /// 
     /// # Safety
-    /// It's unsafe because it share underlying storage with this tensor.
+    /// It's unsafe because the new tensor share underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
     unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
     /// ???
     /// 
     /// # Safety
-    /// It's unsafe because it share the underlying storage with this tensor.
+    /// It's unsafe because the new tensor share the underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
     unsafe fn new_select(&self, dim: usize, i: usize) -> Self;
     /// Transpose between the two dimension and return a tranposed tensor.
     /// 
     /// # Safety
-    /// It share the underlying storage with this tensor.
+    /// The new tensor share the underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
     unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
     /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
     /// and repeatly fill in the value with value copy from given dimension.
@@ -83,43 +88,83 @@ pub trait Tensor<T> {
     /// The original dimension will be shrunk to the original ((dimension - size) / step) + 1
     /// 
     /// # Safety
-    /// It share underlying storage with this tensor.
+    /// New tensor share underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
     unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
-    /// Current implementation in Caffe2 doesn't honor offset.
-    /// For example, storage with size 10 can be created by this function with offset larger than 10.
-    fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize, stride: usize) -> Self;
+    /// 
+    /// The underlying storage will be free awhen this tensor is drop
+    fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
-    /// Current implementation in Caffe2 doesn't honor offset.
-    /// For example, storage with size 10 can be created by this function with offset larger than 10.
-    fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: [usize; 2]) -> Self;
+    /// 
+    /// The underlying storage will be free awhen this tensor is drop
+    fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
-    /// Current implementation in Caffe2 doesn't honor offset.
-    /// For example, storage with size 10 can be created by this function with offset larger than 10.
-    fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 3]) -> Self;
+    /// 
+    /// The underlying storage will be free awhen this tensor is drop
+    fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
-    /// Current implementation in Caffe2 doesn't honor offset.
-    /// For example, storage with size 10 can be created by this function with offset larger than 10.
-    fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 4]) -> Self;
+    /// 
+    /// The underlying storage will be free awhen this tensor is drop
+    fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Create new empty 1d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
     fn new_with_size_1d(size: usize) -> Self;
+    /// Create new empty 2d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
     fn new_with_size_2d(size: [usize; 2]) -> Self;
+    /// Create new empty 3d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
     fn new_with_size_3d(size: [usize; 3]) -> Self;
+    /// Create new empty 4d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
     fn new_with_size_4d(size: [usize; 4]) -> Self;
 
+    /// Return a mutable slice of underlying data. The size of data is 
+    /// exactly equals to actual data being represent by this tensor.
+    /// # Examples
+    /// ```Rust
+    /// use torcher::storage::FloatStorage;
+    /// use torcher::tensor::FloatTensor;
+    /// let mut storage = FloatStorage::new_with_size(100);
+    /// storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
+    /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
+    /// ```
     fn data(&mut self) -> &mut [T];
+    /// Just a wrapper to Caffe2 function.
+    /// It currently only print size of tensor.
     fn desc(&self) -> String;
+    /// Get total number of dimension this tensor is representing.
     fn dimensions(&self) -> usize;
+    /// Get scalar value out of this scalar tensor.
     fn get_0d(&self) -> T;
+    /// Get scalar value from given index of tensor.
     fn get_1d(&self, i: usize) -> T;
+    /// Get scalar value from given indices of 2d tensor.
     fn get_2d(&self, i: [usize; 2]) -> T;
+    /// Get scalar value from given indices of 3d tensor
     fn get_3d(&self, i: [usize; 3]) -> T;
+    /// Get scalar value from given indices of 4d tensor
     fn get_4d(&self, i: [usize; 4]) -> T;
+    /// Check if current tensor is contiguous
     fn is_contiguous(&self) -> bool;
+    /// Total number of element this tensor is representing.
+    /// It may not be equals to number return by `data().len()`
     fn numel(&self) -> usize;
+    /// Resize into the shape similar to given tensor
     fn resize_as(&mut self, ref_tensor: &Self) {
         let ref_shape = ref_tensor.shape();
 
@@ -148,17 +193,44 @@ pub trait Tensor<T> {
     // fn resize_4d(&mut self, size: [usize; 4]);
     // fn resize_5d(&mut self, size: [usize; 5]);
 
+    /// Resize current tensor to given size and stride
+    /// 
+    /// # Parameter
+    /// `dim` is a new dimensions of this tensor
+    /// `size` need to have `size.len() == dim`
+    /// `stride` need to have `stride.len() == dim - 1`
     fn resize_nd(&mut self, dim: usize, size: &[usize], stride: &[usize]);
+    /// Set scalar tensor to specific value
     fn set_0d(&mut self, v: T);
+    /// Set 1d tensor at index `i` to given `v`
+    /// 
+    /// This function perform index conversion base on size/stride on each call.
     fn set_1d(&mut self, i: usize, v: T);
+    /// Set 2d tensor at index `i` to given `v`
+    /// 
+    /// This function perform index conversion base on size/stride on each call.
     fn set_2d(&mut self, i: [usize; 2], v: T);
+    /// Set 3d tensor at index `i` to given `v`
+    /// 
+    /// This function perform index conversion base on size/stride on each call.
     fn set_3d(&mut self, i: [usize; 3], v: T);
+    /// Set 4d tensor at index `i` to given `v`
+    /// 
+    /// This function perform index conversion base on size/stride on each call.
     fn set_4d(&mut self, i: [usize; 4], v: T);
+    /// Return tuple of size and stride of this tensor
     fn shape(&self) -> (&[usize], &[usize]);
+    /// Return size of given dimension of this tensor
     fn size(&self, dim: usize) -> usize;
+    /// Return underlying storage.
+    /// If it's empty tensor, it may be None
     fn storage(&mut self) -> &mut Option<Self::Storage>;
+    /// Return storage offset of this tensor
     fn storage_offset(&self) -> usize;
+    /// Return stride of given dimension of this tensor
     fn stride(&self, dim: usize) -> usize;
+    /// Perform tensor squeeze. It'll flatten any dimension
+    /// that have size 1
     fn squeeze(&self) -> Self;
 }
 
@@ -391,34 +463,34 @@ mod tests {
     fn float_create_1d_drop() {
         let mut storage = FloatStorage::new_with_size(10);
         storage.fill(1.0);
-        FloatTensor::new_with_storage_1d(storage, 2, 8, 1);
+        FloatTensor::new_with_storage_1d(storage, 2, 8);
     }
 
     #[test]
     fn float_create_1d_desc() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_1d(storage, 2, 8, 1);
+        let ts = FloatTensor::new_with_storage_1d(storage, 2, 8);
         assert_eq!("torch.xTensor of size 8", ts.desc());
     }
 
     #[test]
     fn float_create_2d_desc() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], [2, 1]);
+        let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], 2);
         assert_eq!("torch.xTensor of size 4x2", ts.desc());
     }
 
     #[test]
     fn float_create_3d_desc() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_3d(storage, 1, [3, 3, 1], [3, 1, 1]);
+        let ts = FloatTensor::new_with_storage_3d(storage, 1, [3, 3, 1], [3, 1]);
         assert_eq!("torch.xTensor of size 3x3x1", ts.desc());
     }
 
     #[test]
     fn float_create_4d_desc() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         assert_eq!("torch.xTensor of size 2x2x2x1", ts.desc());
     }
 
@@ -459,6 +531,17 @@ mod tests {
     }
 
     #[test]
+    fn float_data() {
+        let mut storage = FloatStorage::new_with_size(10);
+        storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+        let tensor = FloatTensor::new_with_storage_3d(storage, 1, [3, 2, 2], [2, 1]);
+        
+        let validator = &[1.0f32, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0];
+        
+        (&tensor).into_iter().enumerate().for_each(|(i, v)| assert_eq!(validator[i], v));
+    }
+
+    #[test]
     fn float_data_4d_desc() {
         let mut ts = FloatTensor::new_with_size_4d([4, 3, 2, 1]);
         let raw_data = ts.data();
@@ -491,7 +574,7 @@ mod tests {
     #[test]
     fn float_contiguous() {
         let storage = FloatStorage::new_with_size(10);
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.data()[1] = 0f32;
         let mut cont = ts.new_contiguous();
         cont.data()[0] = 1f32;
@@ -506,7 +589,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = 1 as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [2, 4, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [2, 4, 1]);
     
         ts.resize_0d();
 
@@ -519,7 +602,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 4, 1, 2]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 4, 1]);
     
         ts.resize_1d(8); // [[[[1], [2]], [[5], [6]]], [[[3], [4]], [[7], [8]]]]
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
@@ -535,7 +618,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 2, 1, 4]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 2, 1]);
         let (m, n) = (4, 2);
         ts.resize_2d([m, n]);
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
@@ -552,7 +635,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 2, 1, 4]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 2, 1]);
         let (m, n, o) = (2, 2, 2);
         ts.resize_3d([m, n, o]);
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
@@ -571,7 +654,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 1, 2, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 1, 2]);
         let (m, n, o, p) = (2, 2, 2, 1);
         let validate = [1f32, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0];
         for i in 0..m {
@@ -590,7 +673,7 @@ mod tests {
         let mut storage = FloatStorage::new_with_size(10);
         storage[3] = 1f32;
         unsafe {
-            let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], [2, 1]);
+            let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], 2);
             let mut sel = ts.new_select(1, 1);
 
             assert_eq!(1f32 , sel.data()[0]);
@@ -603,7 +686,7 @@ mod tests {
         storage[4] = 2f32;
         storage[5] = 1f32;
         unsafe {
-            let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], [2, 1]);
+            let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
             let mut sel = ts.new_narrow(1, 1, 1).new_narrow(0, 1, 2);
             
             assert_eq!("torch.xTensor of size 2x1", sel.desc());
@@ -618,7 +701,7 @@ mod tests {
             storage[i] = i as f32;
         }
         unsafe {
-            let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], [2, 1]);
+            let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], 2);
             let tp = ts.new_transpose(0, 1);
             
             assert_eq!("torch.xTensor of size 2x4", tp.desc());
@@ -628,14 +711,14 @@ mod tests {
     #[test]
     fn float_dim() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         assert_eq!(4, ts.dimensions());
     }
 
     #[test]
     fn float_is_contiguous() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         assert!(ts.is_contiguous());
     }
 
@@ -645,7 +728,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         let validator = &[1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
 
         (&ts).into_iter().enumerate().for_each(|(i, v)| {
@@ -659,7 +742,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         let validator = &[1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
 
         (&mut ts).into_iter().enumerate().for_each(|(i, v)| {
@@ -673,7 +756,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.resize_0d();
 
         assert_eq!(0, ts.dimensions());
@@ -686,7 +769,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.resize_1d(2);
 
         assert_eq!(1, ts.dimensions());
@@ -699,7 +782,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.resize_2d([4, 2]);
 
         assert_eq!(2, ts.dimensions());
@@ -713,7 +796,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.resize_3d([4, 1, 2]);
 
         assert_eq!(3, ts.dimensions());
@@ -757,7 +840,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         ts.resize_nd(2, &[4, 2], &[2, 1]);
         let size = &[4, 2];
 
@@ -772,7 +855,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 4, 2, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [1, 4, 2]);
     
         ts.resize_0d(); // [[[[1], [2]], [[5], [6]]], [[[3], [4]], [[7], [8]]]]
         ts.set_0d(2f32);
@@ -782,7 +865,7 @@ mod tests {
     #[test]
     fn float_set_get_1d() {
         let storage = FloatStorage::new_with_size(10);
-        let mut ts = FloatTensor::new_with_storage_1d(storage, 1, 8, 1);
+        let mut ts = FloatTensor::new_with_storage_1d(storage, 1, 8);
 
         for i in 0..ts.shape().0[0] {
             ts.set_1d(i as usize, i as f32);
@@ -799,7 +882,7 @@ mod tests {
     fn float_set_2d() {
         let storage = FloatStorage::new_with_size(10);
         let (m, n) = (4, 2);
-        let mut ts = FloatTensor::new_with_storage_2d(storage, 1, [m, n], [2, 1]);
+        let mut ts = FloatTensor::new_with_storage_2d(storage, 1, [m, n], 2);
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
         for i in 0..m {
             for j in 0..n {
@@ -814,7 +897,7 @@ mod tests {
     fn float_set_3d() {
         let storage = FloatStorage::new_with_size(10);
         let (m, n, o) = (2, 2, 2);
-        let mut ts = FloatTensor::new_with_storage_3d(storage, 1, [m, n, o], [4, 2, 1]);
+        let mut ts = FloatTensor::new_with_storage_3d(storage, 1, [m, n, o], [4, 2]);
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
         for i in 0..m {
             for j in 0..n {
@@ -831,7 +914,7 @@ mod tests {
     fn float_set_4d() {
         let storage = FloatStorage::new_with_size(10);
         let (m, n, o, p) = (2, 2, 2, 1);
-        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [m, n, o, p], [4, 1, 2, 1]);
+        let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [m, n, o, p], [4, 1, 2]);
         let src = [1f32, 3.0, 2.0, 4.0, 5.0, 7.0, 6.0, 8.0];
         let validate = [1f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
         
@@ -850,7 +933,7 @@ mod tests {
     #[test]
     fn float_size() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         let size = &[2, 2, 2, 1];
 
         for i in 0..ts.dimensions() {
@@ -861,7 +944,7 @@ mod tests {
     #[test]
     fn float_stride() {
         let storage = FloatStorage::new_with_size(10);
-        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
         let stride = &[4, 2, 1, 1];
 
         for i in 0..ts.dimensions() {
@@ -875,7 +958,7 @@ mod tests {
         for i in 0..storage.len() {
             storage[i] = i as f32;
         }
-        let ts = FloatTensor::new_with_storage_4d(storage, 2, [2, 1, 2, 1], [4, 2, 1, 1]);
+        let ts = FloatTensor::new_with_storage_4d(storage, 2, [2, 1, 2, 1], [4, 2, 1]);
         let squeezed = ts.squeeze();
 
         assert_eq!(&[2usize, 2], squeezed.shape().0);
