@@ -179,16 +179,29 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #squeeze_fn(tensor: *mut #c_ty_id, res: *mut #c_ty_id);
         }
 
-        pub struct #ident {
+        pub struct #ident<'a> {
+            pub data: &'a mut [#t],
             forget : bool,
-            storage : Option<#store_ty_id>,
+            storage : Option<#store_ty_id<'a>>,
             storage_bound: usize,
             tensor : *mut #c_ty_id,
             size : Vec<usize>,
             stride : Vec<usize>
         }
 
-        impl #ident {
+        impl<'a> #ident<'a> {
+            /// Convenience method that return iterator of
+            /// current object
+            fn iter(&self) -> TensorIterator<#t> {
+                self.into_iter()
+            }
+
+            /// Convenience method that return mutable iterator of
+            /// current object
+            fn iter_mut(&mut self) -> TensorIterMut<#t> {
+                self.into_iter()
+            }
+
             /// Get short description of storage.
             /// This includes name of storage, size, and
             /// sample data if it has more than 20 elements.
@@ -197,10 +210,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn short_desc(&mut self) -> String {
                 let size = self.size.as_slice();
                 let stride = self.stride.as_slice();
-                let data = match self.storage {
-                    Some(ref mut store) => &*store.data(),
-                    None => &[]
-                };
+                let data = self.data();
                 let name = stringify!(#ident);
 
                 if size.iter().fold(0, |cum, v| cum + v) > 20 {
@@ -221,12 +231,13 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl Tensor<#t> for #ident {
-            type Storage = #store_ty_id;
+        impl<'a> Tensor<#t> for #ident<'a> {
+            type Storage = #store_ty_id<'a>;
 
-            fn new() -> Self {
+            fn new() -> #ident<'a> {
                 unsafe {
                     #ident {
+                        data: &mut [],
                         forget: false,
                         storage: None,
                         storage_bound: 0,
@@ -237,17 +248,19 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_contiguous(&self) -> Self {
+            fn new_contiguous(&self) -> #ident<'a> {
                 unsafe {
                     let cont = #new_contiguous_fn(self.tensor);
-                    let storage: #store_ty_id = #storage_fn(cont).into();
+                    let storage = #store_ty_id::from(#storage_fn(cont)).forget();
+                    let data = std::slice::from_raw_parts_mut(#data_fn(cont), storage.size());
                     let stride : Vec<usize> = (0..#dim_fn(cont)).map(|i| {
                         #stride_fn(cont, i as i32) as usize
                     }).collect();
 
                     #ident {
+                        data: data,
                         forget: false,
-                        storage: Some(storage.forget()),
+                        storage: Some(storage),
                         storage_bound: self.storage_bound,
                         tensor: cont,
                         size: self.size.to_owned(),
@@ -256,9 +269,9 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self {
+            unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> #ident<'a> {
                 let tensor = #new_narrow_fn(self.tensor, dim as c_int, i as i64, size as i64);
-                let storage: #store_ty_id = #storage_fn(tensor).into();
+                let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                 let mut size = Vec::new();
                 let dim = #dim_fn(tensor);
                 let mut big_bound = 0;
@@ -268,7 +281,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     size.push(cur_size);
                     let cur_bound = cur_stride * cur_size;
 
-                    if cur_bound > big_bound {
+                    if cur_bound > big_bound && i < dim - 1 {
                         big_bound = cur_bound;
                     }
 
@@ -276,10 +289,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }).collect();
 
                 let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
+                    data: data,
                     forget: false,
-                    storage: Some(storage.forget()),
+                    storage: Some(storage),
                     storage_bound: storage_bound,
                     tensor: tensor,
                     size: size,
@@ -287,9 +302,9 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            unsafe fn new_select(&self, dim: usize, i: usize) -> Self {
+            unsafe fn new_select(&self, dim: usize, i: usize) -> #ident<'a> {
                 let tensor = #new_select_fn(self.tensor, dim as c_int, i as i64);
-                let storage: #store_ty_id = #storage_fn(tensor).into();
+                let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                 let mut size = Vec::new();
                 let dim = #dim_fn(tensor);
                 let mut big_bound = 0;
@@ -299,7 +314,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     size.push(cur_size);
                     let cur_bound = cur_stride * cur_size;
 
-                    if cur_bound > big_bound {
+                    if cur_bound > big_bound && i < dim - 1 {
                         big_bound = cur_bound;
                     }
 
@@ -307,10 +322,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }).collect();
 
                 let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
+                    data: data,
                     forget: false,
-                    storage: Some(storage.forget()),
+                    storage: Some(storage),
                     storage_bound: storage_bound,
                     tensor: tensor,
                     size: size,
@@ -318,7 +335,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self {
+            unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> #ident<'a> {
                 let tensor = #new_transpose_fn(self.tensor, dim_1 as c_int, dim_2 as c_int);
                 let storage: #store_ty_id = #storage_fn(tensor).into();
                 let mut size = Vec::new();
@@ -330,7 +347,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     size.push(cur_size);
                     let cur_bound = cur_stride * cur_size;
 
-                    if cur_bound > big_bound {
+                    if cur_bound > big_bound && i < dim - 1 {
                         big_bound = cur_bound;
                     }
 
@@ -338,8 +355,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }).collect();
 
                 let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
+                    data: data,
                     forget: false,
                     storage: Some(storage.forget()),
                     storage_bound: storage_bound,
@@ -349,7 +368,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self {
+            unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> #ident<'a> {
                 let tensor = #new_unfold_fn(self.tensor, dim as c_int, size as i64, step as i64);
                 let storage: #store_ty_id = #storage_fn(tensor).into();
                 let mut size = Vec::new();
@@ -361,7 +380,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     size.push(cur_size);
                     let cur_bound = cur_stride * cur_size;
 
-                    if cur_bound > big_bound {
+                    if cur_bound > big_bound && i < dim - 1 {
                         big_bound = cur_bound;
                     }
 
@@ -369,8 +388,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }).collect();
 
                 let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
+                    data: data,
                     forget: false,
                     storage: Some(storage.forget()),
                     storage_bound: storage_bound,
@@ -380,11 +401,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> Self {
+            fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> #ident<'a> {
                 unsafe {
                     // Caffe2 stride of 1d doesn't matter. It can be set to any value.
                     let tensor = #new_with_storage_1d_fn(store.storage(), offset, size, 1);
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), size);
+
                     #ident {
+                        data: data,
                         forget: false,
                         storage: Some(store),
                         storage_bound: offset + size,
@@ -395,7 +419,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> Self {
+            fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> #ident<'a> {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_2d_fn(store.storage(), offset, size[0], stride, size[1], 1);
@@ -405,7 +429,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -415,8 +439,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     #ident {
+                        data: data,
                         forget: false,
                         storage: Some(store),
                         storage_bound: storage_bound,
@@ -427,7 +453,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self {
+            fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> #ident<'a> {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_3d_fn(store.storage(), offset, size[0], stride[0], size[1], stride[1], size[2], 1);
@@ -437,7 +463,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -447,8 +473,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                     #ident {
+                        data: data,
                         forget: false,
                         storage: Some(store),
                         storage_bound: storage_bound,
@@ -459,7 +487,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self {
+            fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> #ident<'a> {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_4d_fn(store.storage(), offset, size[0], stride[0], size[1], stride[1], size[2], stride[2], size[3], 1);
@@ -469,7 +497,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -479,10 +507,13 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
+                    let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                     #ident {
+                        data: data,
                         forget: false,
-                        storage: Some(store),
+                        storage: Some(storage),
                         storage_bound: storage_bound,
                         tensor: tensor,
                         size: size.to_vec(),
@@ -491,18 +522,20 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_size_1d(size: usize) -> Self {
+            fn new_with_size_1d(size: usize) -> #ident<'a> {
                 unsafe {
                     let tensor = #new_with_size_1d_fn(size as i64);
                     let stride = #stride_fn(tensor, 0 as c_int) as usize;
 
-                    let storage: #store_ty_id = #storage_fn(tensor).into();
+                    let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), size);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
 
                     #ident {
+                        data: data,
                         forget: false,
-                        storage: Some(storage.forget()),
+                        storage: Some(storage),
                         storage_bound: size,
                         tensor: tensor,
                         size: vec![size],
@@ -511,7 +544,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_size_2d(size: [usize; 2]) -> Self {
+            fn new_with_size_2d(size: [usize; 2]) -> #ident<'a> {
                 unsafe {
                     let tensor = #new_with_size_2d_fn(size[0] as i64, size[1] as i64);
                     let stride = [
@@ -525,7 +558,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -533,9 +566,11 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }).collect();
 
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
                     #ident {
+                        data: data,
                         forget: false,
                         storage: Some(storage.forget()),
                         storage_bound: storage_bound,
@@ -546,7 +581,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_size_3d(size: [usize; 3]) -> Self {
+            fn new_with_size_3d(size: [usize; 3]) -> #ident<'a> {
                 unsafe {
                     let tensor = #new_with_size_3d_fn(size[0] as i64, size[1] as i64, size[2] as i64);
                     let stride = [
@@ -554,14 +589,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         #stride_fn(tensor, 1 as c_int) as usize,
                         #stride_fn(tensor, 2 as c_int) as usize
                     ];
-                    let storage: #store_ty_id = #storage_fn(tensor).into();
+                    let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                     let dim = #dim_fn(tensor);
                     let mut big_bound = 0;
                     let stride : Vec<usize> = (0..dim).map(|i| {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -569,11 +604,13 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }).collect();
 
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
                     #ident {
+                        data: data,
                         forget: false,
-                        storage: Some(storage.forget()),
+                        storage: Some(storage),
                         storage_bound: storage_bound,
                         tensor: tensor,
                         size: size.to_vec(),
@@ -582,7 +619,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_size_4d(size: [usize; 4]) -> Self {
+            fn new_with_size_4d(size: [usize; 4]) -> #ident<'a> {
                 unsafe {
                     let tensor = #new_with_size_4d_fn(size[0] as i64, size[1] as i64, size[2] as i64, size[3] as i64);
                     let stride = [
@@ -591,14 +628,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         #stride_fn(tensor, 2 as c_int) as usize,
                         #stride_fn(tensor, 3 as c_int) as usize
                     ];
-                    let storage: #store_ty_id = #storage_fn(tensor).into();
+                    let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                     let dim = #dim_fn(tensor);
                     let mut big_bound = 0;
                     let stride : Vec<usize> = (0..dim).map(|i| {
                         let cur_stride = #stride_fn(tensor, i as i32) as usize;
                         let cur_bound = cur_stride * size[i as usize];
 
-                        if cur_bound > big_bound {
+                        if cur_bound > big_bound && i < dim - 1 {
                             big_bound = cur_bound;
                         }
 
@@ -606,11 +643,13 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }).collect();
 
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
                     #ident {
+                        data: data,
                         forget: false,
-                        storage: Some(storage.forget()),
+                        storage: Some(storage),
                         storage_bound: storage_bound,
                         tensor: tensor,
                         size: size.to_vec(),
@@ -619,10 +658,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn data(&mut self) -> &mut [#t] {
-                unsafe {
-                    std::slice::from_raw_parts_mut(#data_fn(self.tensor), self.storage_bound)
-                }
+            fn data(&self) -> &[#t] {
+                self.data
+            }
+
+            fn data_mut(&mut self) -> &mut [#t] {
+                self.data
             }
 
             fn desc(&self) -> String {
@@ -683,6 +724,8 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 unsafe {
                     self.size.clear();
                     self.stride.clear();
+                    self.storage_bound = 1;
+                    self.data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), 1);
                     #resize_0d_fn(self.tensor);
                 }
             }
@@ -691,8 +734,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 unsafe {
                     self.size = vec![size];
                     self.stride = vec![1];
+                    self.storage_bound = size;
                     #resize_1d_fn(self.tensor, size as i64);
                     self.stride = vec![#stride_fn(self.tensor, 0 as c_int) as usize];
+                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), size);
                 }
             }
 
@@ -704,6 +749,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         #stride_fn(self.tensor, 0 as c_int) as usize,
                         #stride_fn(self.tensor, 1 as c_int) as usize
                     ].to_vec();
+                    
+                    let storage_bound = self.stride[0] * self.size[0] + self.size[1] - 1;
+                    self.storage_bound = storage_bound;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound);
                 }
             }
 
@@ -716,6 +765,19 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         #stride_fn(self.tensor, 1 as c_int) as usize,
                         #stride_fn(self.tensor, 2 as c_int) as usize
                     ].to_vec();
+
+                    let mut storage_bound = 0;
+
+                    for i in 0..(self.stride.len() - 1) {
+                        let cur_bound = self.stride[i] * size[i];
+                        if cur_bound > storage_bound {
+                            storage_bound = cur_bound;
+                        }
+                    }
+
+                    storage_bound += size[size.len() - 1] - 1;
+                    self.storage_bound = storage_bound;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound);
                 }
             }
 
@@ -751,11 +813,26 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
 
             fn resize_nd(&mut self, dim: usize, size: &[usize], stride: &[usize]) {
                 assert_eq!(dim, size.len(), "Size must have exactly {} elements", dim);
-                assert_eq!(dim, stride.len() - 1, "Stride must have exactly {} elements", dim - 1);
+                assert_eq!(dim - 1, stride.len(), "Stride must have exactly {} elements", dim - 1);
                 unsafe {
                     self.size = size.to_owned();
                     self.stride = stride.to_owned();
-                    #resize_nd_fn(self.tensor, dim as c_int, size.as_ptr() as *const i64, stride.as_ptr() as *const i64);
+                    self.stride.push(1); // just to conform to Caffe2 API
+                    #resize_nd_fn(self.tensor, dim as c_int, size.as_ptr() as *const i64, self.stride.as_ptr() as *const i64);
+
+                    let mut storage_bound = 0;
+
+                    for i in 0..(self.size.len() - 1) {
+                        let cur_bound = self.stride[i] * size[i];
+
+                        if cur_bound > storage_bound {
+                            storage_bound = cur_bound;
+                        }
+                    }
+
+                    storage_bound += size[size.len() - 1] - 1;
+                    self.storage_bound = storage_bound;
+                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound);
                 }
             }
 
@@ -821,28 +898,43 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 let mut new_ts = Self::new();
                 unsafe {
                     #squeeze_fn(new_ts.tensor, self.tensor);
-                    let dim = new_ts.dimensions();
-                    for i in 0..dim {
+                    let dim = #dim_fn(new_ts.tensor);
+                    let mut storage_bound = 0;
+
+                    for i in 0..(dim - 1) {
                         new_ts.size.push(#size_fn(new_ts.tensor, i as c_int) as usize);
                         new_ts.stride.push(#stride_fn(new_ts.tensor, i as c_int) as usize);
+                        let cur_bound = new_ts.size[i as usize] * new_ts.stride[i as usize];
+
+                        if cur_bound > storage_bound {
+                            storage_bound = cur_bound;
+                        }
                     }
+
+                    new_ts.size.push(#size_fn(new_ts.tensor, dim - 1 as c_int) as usize);
+                    new_ts.stride.push(#stride_fn(new_ts.tensor, dim - 1 as c_int) as usize);
+                    storage_bound += new_ts.size[dim as usize - 1];
+                    new_ts.storage_bound = storage_bound;
+                    new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), storage_bound);
+
                     new_ts
                 }
             }
         }
 
-        impl Clone for #ident {
-            fn clone(&self) -> Self {
+        impl<'a> Clone for #ident<'a> {
+            fn clone(&self) -> #ident<'a> {
                 unsafe {
                     let clone = #new_clone_fn(self.tensor);
-                    let storage: #store_ty_id = #storage_fn(clone).into();
+                    let storage = #store_ty_id::from(#storage_fn(clone)).forget();
                     let stride : Vec<usize> = (0..#dim_fn(clone)).map(|i| {
                         #stride_fn(clone, i as i32) as usize
                     }).collect();
 
                     #ident {
+                        data: std::slice::from_raw_parts_mut(#data_fn(self.tensor), self.storage_bound),
                         forget: false,
-                        storage: Some(storage.forget()),
+                        storage: Some(storage),
                         storage_bound: self.storage_bound,
                         tensor: clone,
                         size: self.size.to_owned(),
@@ -852,7 +944,26 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl Drop for #ident {
+        /// It allow read only access to underlying data.
+        /// It's similar to calling to [data](trait.Tensor.html#tymethod.data) function
+        /// but that function need mut access.
+        impl<'a> Deref for #ident<'a> {
+            type Target=[#t];
+
+            fn deref(&self) -> &Self::Target {
+                self.data()
+            }
+        }
+
+        /// It deref into underlying storage data.
+        /// It's similar to calling to [data](trait.Tensor.html#tymethod.data) function
+        impl<'a> DerefMut for #ident<'a> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                self.data_mut()
+            }
+        }
+
+        impl<'a> Drop for #ident<'a> {
             fn drop(&mut self) {
                 unsafe {
                     if !self.forget {
@@ -862,29 +973,17 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl<'a> IntoIterator for &'a #ident {
+        impl<'a, 'b: 'a> IntoIterator for &'a #ident<'b> {
             type Item = #t;
             type IntoIter = TensorIterator<'a, #t>;
 
             fn into_iter(self) -> Self::IntoIter {
-                let offset = self.storage_offset();
-                let l = self.numel();
-
-                match self.storage {
-                    Some(ref storage) => {
-                        let offset = self.storage_offset();
-                        let (size, stride) = self.shape();
-
-                        TensorIterator::new(&storage[offset..(offset + self.storage_bound)], size, stride)
-                    },
-                    None => {
-                        TensorIterator::new(&[], &[0], &[])
-                    }
-                }
+                let (size, stride) = self.shape();
+                TensorIterator::new(self.data(), size, stride)
             }
         }
 
-        impl<'a> IntoIterator for &'a mut #ident {
+        impl<'a, 'b: 'a> IntoIterator for &'a mut #ident<'b> {
             type Item = &'a mut #t;
             type IntoIter = TensorIterMut<'a, #t>;
 
@@ -892,7 +991,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 // need unsafe because we both borrow and borrow mut on self at the same time.
                 unsafe {
                     // borrow mut self here
-                    let data = &mut *(self.data() as *mut [#t]);
+                    let data = &mut *(self.data_mut() as *mut [#t]);
                     // borrow self here
                     let (size, stride) = self.shape();
 
@@ -903,12 +1002,4 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 }

@@ -101,13 +101,14 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #free_fn(storage: *mut #c_ty_id);
         }
 
-        pub struct #ident {
+        pub struct #ident<'a> {
+            _data: &'a mut [#t],
             forget : bool,
             storage : *mut #c_ty_id,
             n : usize
         }
 
-        impl #ident {
+        impl<'a> #ident<'a> {
             /// Get short description of storage.
             /// This includes name of storage, size, and
             /// sample data if it has more than 20 elements.
@@ -115,7 +116,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             /// every elements.
             fn short_desc(&mut self) -> String {
                 let size = self.n;
-                let data = &self.data();
+                let data = &self._data;
                 let name = stringify!(#ident);
 
                 if size > 20 {
@@ -141,52 +142,40 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl Into<#ident> for *mut #c_ty_id {
-            /// User need to ensure that the underlying storage won't be free twice.
-            /// The longest live of all shall be the one to free.
-            /// All other instance using the same underlying storage shall
-            /// all call to [forget](trait.TensorStorage.html#tymethod.forget)
-            fn into(self) -> #ident {
-                unsafe {
-                    let size = #size_fn(self);
-
-                    #ident {
-                        forget: false, 
-                        storage: self,
-                        n: size
-                    }
-                }
-            }
-        }
-
-        impl TensorStorage<#t> for #ident {
+        impl<'a> TensorStorage<#t> for #ident<'a> {
             fn new() -> Self {
                 unsafe {
+                    let storage = #new_fn();
+                    let size = #size_fn(storage);
+
                     #ident {
+                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size),
                         forget: false,
-                        storage: #new_fn(),
-                        n: 0
+                        storage: storage,
+                        n: size
                     }
                 }
             }
 
             fn new_with_size(size: usize) -> Self {
                 unsafe {
+                    let storage = #new_with_size_fn(size);
+                    
                     #ident {
+                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size),
                         forget: false,
-                        storage: #new_with_size_fn(size),
+                        storage: storage,
                         n: size
                     }
                 }
             }
 
-            fn data<'a>(&'a mut self) -> &'a mut [#t] {
-                unsafe {
-                    std::slice::from_raw_parts_mut::<'a>(
-                        #data_fn(self.storage), 
-                        self.n
-                    )
-                }
+            fn data(&self) -> &[#t] {
+                self._data
+            }
+
+            fn data_mut(&mut self) -> &mut [#t] {
+                self._data
             }
 
             unsafe fn forget(mut self) -> Self {
@@ -195,9 +184,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
 
             fn fill(&mut self, value: #t) {
-                unsafe {
-                    #fill_fn(self.storage, value);
-                }
+                self._data.iter_mut().for_each(|v| *v = value);
             }
 
             fn resize(&mut self, size: usize) {
@@ -205,12 +192,15 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
 
                 unsafe {
                     #resize_fn(self.storage, size);
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), size);
                 }
             }
 
             fn retain(&mut self) {
                 unsafe {
                     #retain_fn(self.storage);
+                    self.n = #size_fn(self.storage);
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n);
                 }
             }
 
@@ -220,7 +210,10 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
 
             fn swap(&mut self, with : Self) {
                 unsafe {
+                    // need to call to Caffe2 to ensure that their storage got swap as well
                     #swap_fn(self.storage, with.storage);
+                    self.n = with.n;
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n);
                 }
             }
         }
@@ -228,35 +221,47 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
         /// For each of usage, it return a slice of actual data
         /// of this struct. For higher throughput, consider using 
         /// [data function](trait.TensorStorage.html#tymethod.data) instead.
-        impl Deref for #ident {
+        impl<'a> Deref for #ident<'a> {
             type Target = [#t];
 
             fn deref(&self) -> &[#t] {
-                unsafe {
-                    std::slice::from_raw_parts(#data_fn(self.storage), self.n)
-                }
+                self._data
             }
         }
 
         /// For each of usage, it return mutable slice of actual data
         /// of this struct. For higher throughput, consider using 
         /// [data function](trait.TensorStorage.html#tymethod.data) instead.
-        impl DerefMut for #ident {
+        impl<'a> DerefMut for #ident<'a> {
             fn deref_mut(&mut self) -> &mut [#t] {
-                unsafe {
-                    std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n)
-                }
+                self._data
             }
         }
 
         /// Clean up memory allocated outside of Rust.
         /// Unless [forget function](trait.TensorStorage.html#tymethod.forget) is called,
         /// it'll leave underlying storage untouch.
-        impl Drop for #ident {
+        impl<'a> Drop for #ident<'a> {
             fn drop(&mut self) {
                 unsafe {
                     if !self.forget {
                         #free_fn(self.storage);
+                    }
+                }
+            }
+        }
+
+        impl<'a> From<*mut #c_ty_id> for #ident<'a> {
+            fn from(c_storage: *mut #c_ty_id) -> #ident<'a> {
+                unsafe {
+                    let size = #size_fn(c_storage);
+                    let data = #data_fn(c_storage);
+
+                    #ident {
+                        _data: std::slice::from_raw_parts_mut(data, size),
+                        forget: false, 
+                        storage: c_storage,
+                        n: size
                     }
                 }
             }

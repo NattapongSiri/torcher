@@ -47,11 +47,16 @@ pub trait TensorStorage<T> : Drop {
     /// fixed size on memory
     fn new_with_size(size: usize) -> Self;
 
+    /// Return a slice of actual memory behind this storage.
+    /// For fastest performance, it's recommend to use mutate data by using this function
+    /// instead.
+    fn data(&self) -> &[T];
+
     /// Return a mutable slice of actual memory behind
     /// this storage.
     /// For fastest performance, it's recommend to use mutate data by using this function
     /// instead.
-    fn data<'a>(&'a mut self) -> &'a mut [T];
+    fn data_mut(&mut self) -> &mut [T];
 
     /// Consume this storage without freeing storage in 
     /// memory. This function is design to be used in FFI case
@@ -133,7 +138,7 @@ mod tests {
             // auto convert using From trait
             println!("Attempt to convert from native c store");
             let native_store = fs.storage();
-            let another_fs : FloatStorage = native_store.into();
+            let another_fs = FloatStorage::from(native_store);
             another_fs.forget(); // or it will crash because underlying storage got free twice
             println!("Conversion succeed.");
         }
@@ -165,7 +170,7 @@ mod tests {
         let mut fs = FloatStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f32;
             validator.push(i as f32);
         });
@@ -178,7 +183,7 @@ mod tests {
         let mut fs = DoubleStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f64;
             validator.push(i as f64);
         });
@@ -192,7 +197,7 @@ mod tests {
         fs.resize(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f32;
             validator.push(i as f32);
         });
@@ -206,7 +211,7 @@ mod tests {
         fs.resize(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f64;
             validator.push(i as f64);
         });
@@ -219,7 +224,7 @@ mod tests {
         let mut fs = FloatStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f32;
             validator.push(i as f32);
         });
@@ -234,7 +239,7 @@ mod tests {
         let mut fs = DoubleStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f64;
             validator.push(i as f64);
         });
@@ -249,7 +254,7 @@ mod tests {
         let mut fs = FloatStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        fs.data().iter_mut().enumerate().for_each(|(i, d)| {
+        fs.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f32;
             validator.push(i as f32);
         });
@@ -262,7 +267,7 @@ mod tests {
         let mut ds = DoubleStorage::new_with_size(32);
         let mut validator = Vec::with_capacity(32);
 
-        ds.data().iter_mut().enumerate().for_each(|(i, d)| {
+        ds.data_mut().iter_mut().enumerate().for_each(|(i, d)| {
             *d = i as f64;
             validator.push(i as f64);
         });
@@ -299,7 +304,7 @@ mod tests {
 
         use std::time::Instant;
         let begin = Instant::now();
-        let data = ds.data();
+        let data = ds.data_mut();
 
         for i in 0..data.len() {
             data[i] = 2f64;
@@ -319,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn memory_leak_test() {
         println!("
         This test never fail.
@@ -336,37 +342,6 @@ mod tests {
             // if we didn't fill the value, it may not actually allocate memory
             println!("Mem leak test {}/{}", i, n);
             tmp.fill(1.0);
-        }
-
-        println!("Mem leak test done");
-    }
-
-    #[test]
-    #[ignore]
-    fn show_leak() {
-        println!("
-            This test never fail.
-            The only way to check is monitor memory consumption.
-            If memory leak, it'll consume about 6.8GB of memory.
-            This shall be large enough to freeze most of PC.
-            Otherwise, it'll consume about 1.7GB.
-        ");
-        eprintln!("
-            Warning!!! Leaking memory test.
-            This test intended leaking memory.
-        ");
-        // if memory leak, it'll consume about 6.8GB of memory
-        let n = 4;
-        for i in 0..n {
-            // each new consume about 8 bytes per * size + 1 bool + 1 usize which roughly equals 17 bytes in 64bits system.
-            // 63e6 size is estimated to be 1.7GB per each instance
-            let mut tmp = DoubleStorage::new_with_size(1e8 as usize);
-            // if we didn't fill the value, it may not actually allocate memory
-            println!("leak test {}/{}", i, n);
-            tmp.fill(1.0f64);
-            unsafe {
-                tmp.forget();
-            }
         }
 
         println!("Mem leak test done");

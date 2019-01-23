@@ -1,4 +1,4 @@
-//! Basic tensor create and edit are provided by this crate.
+//! This crate provides basic tensor create and edit operation.
 //! If the tensor is created based on existing storage, the 
 //! underlying storage will be freed when tensor is freed.
 //! If user uses any of unsafe operation, it's essential to
@@ -6,19 +6,7 @@
 //! that got return from unsafe operation. Otherwise, it
 //! result in undefined behavior.
 //! 
-//! Be caution on using [data](trait.Tensor.html#tymethod.data) function.
-//! It always return entire backend data. For example:
-//! ```Rust
-//! let tensor = FloatTensor::new_with_size_1d(10);
-//! unsafe {
-//!     let narrowed = tensor.new_narrow(0, 2, 5);
-//!     // both tensor use the same backend storage
-//!     // so the line below is true.
-//!     assert_eq!(tensor.data(), narrowed.data());
-//! }
-//! ```
-//! 
-//! All supported Caffe2 tensors by this crate are following:
+//! All tensor types provided by this crate are:
 //! - Byte tensor
 //!     - [ByteTensor](struct.ByteTensor.html) - stores u8
 //!     - [CharTensor](struct.CharTensor.html) - stores i8
@@ -30,9 +18,27 @@
 //!     - [LongTensor](struct.LongTensor.html) - stores i64
 //!     - [ShortTensor](struct.ShortTensor.html) - stores i16
 //! 
+//! __Note:__ There's no HalfTensor for 16 bits float like Caffe2 as standard Rust
+//! doesn't have such data type.
+//! 
+//! All tensors can be iterate by invoke `iter()` or `iter_mut()` explicitly.
+//! All borrowed tensor can also be put into `for v in &tensor` or 
+//! `for v in &mut tensor` because borrowed tensor implement IntoIterator trait.
+//! All tensors implement Deref and DerefMut which deref into underlying storage
+//! data. This allow convenient access such as tensor[0] = 1.
+//! However, if you need multiple mutations and performance is concerned, calling to 
+//! [data](trait.Tensor.html#tymethod.data) function then mutate the return data
+//! is faster. For example: `let data = tensor.data_mut()` then all later mutation is
+//! done on `data`. This is because deref will attempt to construct a slice of 
+//! underlying data. So using tensor[0] will cause it to construct slice on every
+//! subscription access.
+//! 
+//! __Important note:__ iterative style will iterate per size and stride defined
+//! on tensor but deref style will give a direct access to backend data.
+//! To have similar data traversal like iterator on deref data, 
+//! you need to calculate index by taking size and stride into equation.
+//! 
 //! All other structs are used for manipulating C pointer of Caffe2 tensor.
-//! All tensors can be iterate when borrow or mutably borrowed as 
-//! those borrowed tensor implement IntoIterator.
 //! 
 //! # Safety
 //! All unsafe operation create new tensor instance but reuse existing
@@ -43,6 +49,7 @@ extern crate storage;
 extern crate tensor_derive;
 
 use common::THDescBuff;
+use std::ops::{Deref, DerefMut};
 use std::os::raw::{c_int};
 use storage::{ByteStorage, CharStorage, DoubleStorage, FloatStorage, IntStorage, LongStorage, ShortStorage, TensorStorage};
 use tensor_derive::TorchTensor;
@@ -132,6 +139,18 @@ pub trait Tensor<T> {
     /// Caffe2 lib
     fn new_with_size_4d(size: [usize; 4]) -> Self;
 
+    /// Return a slice of underlying data. The size of data is 
+    /// exactly equals to actual data being represent by this tensor.
+    /// # Examples
+    /// ```Rust
+    /// use torcher::storage::FloatStorage;
+    /// use torcher::tensor::FloatTensor;
+    /// let mut storage = FloatStorage::new_with_size(100);
+    /// storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
+    /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
+    /// ```
+    fn data(&self) -> &[T];
     /// Return a mutable slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
     /// # Examples
@@ -143,7 +162,7 @@ pub trait Tensor<T> {
     /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
     /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
     /// ```
-    fn data(&mut self) -> &mut [T];
+    fn data_mut(&mut self) -> &mut [T];
     /// Just a wrapper to Caffe2 function.
     /// It currently only print size of tensor.
     fn desc(&self) -> String;
@@ -235,18 +254,17 @@ pub trait Tensor<T> {
 }
 
 /// An Iterator over tensor data.
-/// It'll return an underlying data, not a reference.
-/// This is because sometime, return a copy of data is
-/// faster than a reference.
-/// 
-/// In most case, user don't need to construct this struct directly.
-/// It can be use implicitly when user borrow tensor.
+/// It'll return a copy of underlying data, not a reference.
+/// This is because returning a borrow value, when user want to read
+/// data, they will need to deref it. This will have some performance
+/// penalty. Since all tensor types are on primitive data. Copy it
+/// prove to yield highest performance.
 /// 
 /// # Examples
 /// ```Rust
 /// use torcher::tensor::FloatTensor;
 /// let mut tensor = FloatTensor::new_with_size_1d(10);
-/// tensor.data().iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+/// tensor.data_mut().iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
 /// for v in &tensor {
 ///     dbg!(v)
 /// }
@@ -332,14 +350,11 @@ where T: Copy
     }
 }
 
-/// An Iterator over tensor data.
+/// A mutable Iterator over tensor data.
 /// It'll return a mutable data reference.
 /// Such operation is considered unsafe, thought the
 /// iterator doesn't mark as unsafe. This is because signature
 /// defined by Iterator doesn't have unsafe mark.
-/// 
-/// In most case, user don't need to construct this struct directly.
-/// It can be use implicitly when user mutably borrow tensor.
 /// 
 /// # Safety
 /// It can be unsafe to iterating over &mut tensor.
@@ -523,9 +538,9 @@ mod tests {
         let mut ts = FloatTensor::new_with_size_3d([5, 2, 1]);
         unsafe {
             let mut uf_1 = ts.new_unfold(0, 2, 2);
-            ts.data()[0] = 2f32;
-            uf_1.data()[0] = 2f32;
-            assert_eq!(ts.data()[0], uf_1.data()[0]);
+            ts[0] = 2f32;
+            uf_1[0] = 2f32;
+            assert_eq!(ts[0], uf_1[0]);
             assert_eq!(&[2usize, 2, 1, 2], uf_1.shape().0);
         }
     }
@@ -544,7 +559,7 @@ mod tests {
     #[test]
     fn float_data_4d_desc() {
         let mut ts = FloatTensor::new_with_size_4d([4, 3, 2, 1]);
-        let raw_data = ts.data();
+        let raw_data = ts.data_mut();
 
         for i in 0..raw_data.len() {
             raw_data[i] = i as f32;
@@ -558,7 +573,7 @@ mod tests {
     #[test]
     fn float_clone() {
         let mut ts = FloatTensor::new_with_size_4d([4, 3, 2, 1]);
-        let raw_data = ts.data();
+        let raw_data = ts.data_mut();
 
         for i in 0..raw_data.len() {
             raw_data[i] = i as f32;
@@ -575,12 +590,37 @@ mod tests {
     fn float_contiguous() {
         let storage = FloatStorage::new_with_size(10);
         let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
-        ts.data()[1] = 0f32;
+        ts[1] = 0f32;
         let mut cont = ts.new_contiguous();
-        cont.data()[0] = 1f32;
+        cont[0] = 1f32;
 
-        assert_ne!(cont.data()[0], ts.data()[1]); // check whether the storage is shared
+        assert_ne!(cont[0], ts[1]); // check whether the storage is shared
         assert_eq!(&[4usize, 2, 1, 1] as &[usize] , cont.stride.as_slice());
+    }
+
+    #[test]
+    fn float_deref() {
+        let mut storage = FloatStorage::new_with_size(10);
+        storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+        let ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
+        let validator = &[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        
+        for i in 0..ts.len() {
+            assert_eq!(validator[i], ts[i]);
+        }
+    }
+
+    #[test]
+    fn float_deref_mut() {
+        let mut ts = FloatTensor::new_with_size_4d([2, 2, 2, 1]);
+        for i in 0..ts.len() {
+            ts[i] = i as f32;
+        }
+        let validator = &[0f32, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        
+        for i in 0..ts.len() {
+            assert_eq!(validator[i], ts[i]);
+        }
     }
 
     #[test]
@@ -676,7 +716,7 @@ mod tests {
             let ts = FloatTensor::new_with_storage_2d(storage, 2, [4, 2], 2);
             let mut sel = ts.new_select(1, 1);
 
-            assert_eq!(1f32 , sel.data()[0]);
+            assert_eq!(1f32 , sel[0]);
         }
     }
 
@@ -690,7 +730,7 @@ mod tests {
             let mut sel = ts.new_narrow(1, 1, 1).new_narrow(0, 1, 2);
             
             assert_eq!("torch.xTensor of size 2x1", sel.desc());
-            assert_eq!([2f32, 1f32] , sel.data()[0..2]);
+            assert_eq!([2f32, 1f32] , sel[0..2]);
         }
     }
 
@@ -760,7 +800,7 @@ mod tests {
         ts.resize_0d();
 
         assert_eq!(0, ts.dimensions());
-        assert_eq!(1f32, ts.data()[0])
+        assert_eq!(1f32, ts[0])
     }
 
     #[test]
@@ -773,7 +813,7 @@ mod tests {
         ts.resize_1d(2);
 
         assert_eq!(1, ts.dimensions());
-        assert_eq!(1f32, ts.data()[0])
+        assert_eq!(1f32, ts[0])
     }
 
     #[test]
@@ -787,7 +827,7 @@ mod tests {
 
         assert_eq!(2, ts.dimensions());
         assert_eq!((&[4usize, 2] as &[usize], &[2usize, 1] as &[usize]), ts.shape());
-        assert_eq!(1f32, ts.data()[0])
+        assert_eq!(1f32, ts[0])
     }
 
     #[test]
@@ -801,7 +841,7 @@ mod tests {
 
         assert_eq!(3, ts.dimensions());
         assert_eq!((&[4usize, 1, 2] as &[usize], &[2usize, 2, 1] as &[usize]), ts.shape());
-        assert_eq!(1f32, ts.data()[0])
+        assert_eq!(1f32, ts[0])
     }
 
     // #[test]
@@ -841,7 +881,7 @@ mod tests {
             storage[i] = i as f32;
         }
         let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
-        ts.resize_nd(2, &[4, 2], &[2, 1]);
+        ts.resize_nd(2, &[4, 2], &[2]);
         let size = &[4, 2];
 
         for i in 0..ts.dimensions() {
@@ -859,7 +899,7 @@ mod tests {
     
         ts.resize_0d(); // [[[[1], [2]], [[5], [6]]], [[[3], [4]], [[7], [8]]]]
         ts.set_0d(2f32);
-        assert_eq!(2f32, ts.data()[1])
+        assert_eq!(2f32, ts[0])
     }
 
     #[test]
@@ -890,7 +930,7 @@ mod tests {
             }
         }
 
-        assert_eq!(validate, ts.data()[0..8])
+        assert_eq!(validate, ts[0..8])
     }
 
     #[test]
@@ -927,7 +967,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(validate, ts.data()[0..8])
+        assert_eq!(validate, ts[0..8])
     }
 
     #[test]
