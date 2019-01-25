@@ -999,6 +999,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
         }
+
+        impl<'a> From<&'a [#t]> for #ident<'a> {
+            fn from(slice: &'a [#t]) -> #ident<'a> {
+                let mut tensor = #ident::new_with_size_1d(slice.len());
+                tensor.data_mut().iter_mut().enumerate().for_each(|(i, v)| *v = slice[i]);
+                tensor
+            }
+        }
     };
 
     TokenStream::from(expanded)

@@ -12,78 +12,78 @@ where T: Tensor<U>
     fn tensor(&self) -> T;
 }
 
-impl ToTensor<FloatTensor, f32> for [f32]
+impl<'a> ToTensor<FloatTensor<'a>, f32> for [f32]
 {
-    fn tensor(&self) -> FloatTensor {
+    fn tensor(&self) -> FloatTensor<'a> {
         let n = self.len();
         let mut tensor = FloatTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, f)| data[i] = *f);
 
         tensor
     }
 }
 
-impl ToTensor<DoubleTensor, f64> for [f64] {
-    fn tensor(&self) -> DoubleTensor {
+impl<'a> ToTensor<DoubleTensor<'a>, f64> for [f64] {
+    fn tensor(&self) -> DoubleTensor<'a> {
         let n = self.len();
         let mut tensor = DoubleTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, d)| data[i] = *d);
 
         tensor
     }
 }
 
-impl ToTensor<ByteTensor, u8> for [u8] {
-    fn tensor(&self) -> ByteTensor {
+impl<'a> ToTensor<ByteTensor<'a>, u8> for [u8] {
+    fn tensor(&self) -> ByteTensor<'a> {
         let n = self.len();
         let mut tensor = ByteTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, b)| data[i] = *b);
 
         tensor
     }
 }
 
-impl ToTensor<CharTensor, i8> for [i8] {
-    fn tensor(&self) -> CharTensor {
+impl<'a> ToTensor<CharTensor<'a>, i8> for [i8] {
+    fn tensor(&self) -> CharTensor<'a> {
         let n = self.len();
         let mut tensor = CharTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, c)| data[i] = *c);
 
         tensor
     }
 }
 
-impl ToTensor<IntTensor, i32> for [i32] {
-    fn tensor(&self) -> IntTensor {
+impl<'a> ToTensor<IntTensor<'a>, i32> for [i32] {
+    fn tensor(&self) -> IntTensor<'a> {
         let n = self.len();
         let mut tensor = IntTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
 
         tensor
     }
 }
 
-impl ToTensor<LongTensor, i64> for [i64] {
-    fn tensor(&self) -> LongTensor {
+impl<'a> ToTensor<LongTensor<'a>, i64> for [i64] {
+    fn tensor(&self) -> LongTensor<'a> {
         let n = self.len();
         let mut tensor = LongTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
 
         tensor
     }
 }
 
-impl ToTensor<ShortTensor, i16> for [i16] {
-    fn tensor(&self) -> ShortTensor {
+impl<'a> ToTensor<ShortTensor<'a>, i16> for [i16] {
+    fn tensor(&self) -> ShortTensor<'a> {
         let n = self.len();
         let mut tensor = ShortTensor::new_with_size_1d(n);
-        let data = tensor.data();
+        let data = tensor.data_mut();
         self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
 
         tensor
