@@ -59,7 +59,7 @@ use tensor_derive::TorchTensor;
 
 /// A trait that all tensor derivative need to implemented
 pub trait Tensor<T> {
-    type Storage : TensorStorage<T>;
+    type Storage : TensorStorage;
 
     /// Construct an empty tensor
     fn new() -> Self;
@@ -121,6 +121,11 @@ pub trait Tensor<T> {
     /// 
     /// The underlying storage will be free awhen this tensor is drop
     fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free awhen this tensor is drop
+    fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> Self;
     /// Create new empty 1d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
@@ -190,7 +195,7 @@ pub trait Tensor<T> {
     fn resize_as(&mut self, ref_tensor: &Self) {
         let ref_shape = ref_tensor.shape();
 
-        self.resize_nd(ref_shape.0.len(), ref_shape.0, ref_shape.1);
+        self.resize_nd(ref_shape.0, ref_shape.1);
     }
     /// Make tensor a scalar tensor.
     /// It will be a single value, not an array.
@@ -218,10 +223,9 @@ pub trait Tensor<T> {
     /// Resize current tensor to given size and stride
     /// 
     /// # Parameter
-    /// `dim` is a new dimensions of this tensor
     /// `size` need to have `size.len() == dim`
     /// `stride` need to have `stride.len() == dim - 1`
-    fn resize_nd(&mut self, dim: usize, size: &[usize], stride: &[usize]);
+    fn resize_nd(&mut self, size: &[usize], stride: &[usize]);
     /// Set scalar tensor to specific value
     fn set_0d(&mut self, v: T);
     /// Set 1d tensor at index `i` to given `v`
@@ -468,6 +472,9 @@ pub struct IntTensor;
 pub struct LongTensor;
 #[TorchTensor(i16 = "ShortStorage")]
 pub struct ShortTensor;
+
+mod convert;
+include!(concat!(env!("OUT_DIR"), "/conv.rs"));
 
 #[cfg(test)]
 mod tests;

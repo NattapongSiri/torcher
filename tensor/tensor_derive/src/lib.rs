@@ -522,6 +522,61 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
+            fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> #ident<'a> {
+                assert!(size.len() == stride.len() - 1 || size.len() == stride.len(), "Stride shall have either n - 1 elements or n elements where n = size.len()");
+                
+                let mut storage_len = 0;
+
+                for i in 0..(stride.len() - 1) {
+                    let cur_len = stride[i] * size[i];
+                    if cur_len > storage_len {
+                        storage_len = cur_len;
+                    }
+                }
+
+                storage_len += size[size.len() - 1] - 1;
+                let mut stride = stride.to_owned();
+
+                if stride.len() == size.len() - 1 {
+                    stride.push(1);
+                }
+
+                unsafe {
+                    // Caffe2 last dim doesn't have stride so it can be set to any value.
+                    let tensor = #new_with_storage_1d_fn(store.storage(), offset, storage_len, 1);
+                    #resize_nd_fn(tensor, size.len() as i32, size.as_ptr() as *const i64, stride.as_ptr() as *const i64);
+
+                    let dim = #dim_fn(tensor);
+                    let mut big_bound = 0;
+                    let stride : Vec<usize> = (0..dim).map(|i| {
+                        let cur_stride = #stride_fn(tensor, i as i32) as usize;
+                        let cur_bound = cur_stride * size[i as usize];
+
+                        if cur_bound > big_bound && i < dim - 1 {
+                            big_bound = cur_bound;
+                        }
+
+                        cur_stride
+                    }).collect();
+
+                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let mut stride = stride.to_vec();
+                    stride.push(1); // last dim stride for sake of consistency
+                    let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
+                    let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
+
+                    #ident {
+                        data: data,
+                        forget: false,
+                        storage: Some(storage),
+                        storage_bound: storage_bound,
+                        tensor: tensor,
+                        size: size.to_vec(),
+                        stride: stride
+                    }
+                }
+            }
+
             fn new_with_size_1d(size: usize) -> #ident<'a> {
                 unsafe {
                     let tensor = #new_with_size_1d_fn(size as i64);
@@ -811,14 +866,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             //     }
             // }
 
-            fn resize_nd(&mut self, dim: usize, size: &[usize], stride: &[usize]) {
-                assert_eq!(dim, size.len(), "Size must have exactly {} elements", dim);
-                assert_eq!(dim - 1, stride.len(), "Stride must have exactly {} elements", dim - 1);
+            fn resize_nd(&mut self, size: &[usize], stride: &[usize]) {
+                assert_eq!(size.len() - 1, stride.len(), "Stride must have exactly {} elements", size.len() - 1);
+                
                 unsafe {
                     self.size = size.to_owned();
                     self.stride = stride.to_owned();
                     self.stride.push(1); // just to conform to Caffe2 API
-                    #resize_nd_fn(self.tensor, dim as c_int, size.as_ptr() as *const i64, self.stride.as_ptr() as *const i64);
+                    #resize_nd_fn(self.tensor, size.len() as c_int, size.as_ptr() as *const i64, self.stride.as_ptr() as *const i64);
 
                     let mut storage_bound = 0;
 

@@ -142,7 +142,9 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl<'a> TensorStorage<#t> for #ident<'a> {
+        impl<'a> TensorStorage for #ident<'a> {
+            type Datum = #t;
+            
             fn new() -> Self {
                 unsafe {
                     let storage = #new_fn();

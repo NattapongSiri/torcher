@@ -40,7 +40,10 @@ use storage_derive::{TorchStorage};
 
 /// All functions operating on storage.
 /// The storage is the root source of data for every tensor.
-pub trait TensorStorage<T> : Drop {
+pub trait TensorStorage : Drop {
+    /// An internal data type of this storage
+    type Datum;
+
     /// Construct new empty Tensor storage
     fn new() -> Self;
     /// Construct new Tensor storage and allocate
@@ -50,13 +53,13 @@ pub trait TensorStorage<T> : Drop {
     /// Return a slice of actual memory behind this storage.
     /// For fastest performance, it's recommend to use mutate data by using this function
     /// instead.
-    fn data(&self) -> &[T];
+    fn data(&self) -> &[Self::Datum];
 
     /// Return a mutable slice of actual memory behind
     /// this storage.
     /// For fastest performance, it's recommend to use mutate data by using this function
     /// instead.
-    fn data_mut(&mut self) -> &mut [T];
+    fn data_mut(&mut self) -> &mut [Self::Datum];
 
     /// Consume this storage without freeing storage in 
     /// memory. This function is design to be used in FFI case
@@ -69,7 +72,7 @@ pub trait TensorStorage<T> : Drop {
     unsafe fn forget(self) -> Self;
 
     /// Fill entire storage with given value.
-    fn fill(&mut self, value: T);
+    fn fill(&mut self, value: Self::Datum);
 
     /// Alias of size method.
     /// This method is provided because most of Rust 

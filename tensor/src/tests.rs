@@ -1,6 +1,15 @@
 use super::*;
 
 #[test]
+fn byte_to_char() {
+    let mut bytes = ByteTensor::new_with_size_3d([4, 2, 1]);
+    bytes.data_mut().iter_mut().enumerate().for_each(|(i, b)| *b = i as u8);
+    let chars = CharTensor::from(&bytes);
+    // elementwise, it's equals.
+    chars.iter().zip(bytes.iter()).for_each(|(c, b)| assert_eq!(c, b as i8));
+}
+
+#[test]
 fn float_create_drop() {
     FloatTensor::new();
 }
@@ -412,7 +421,7 @@ fn float_resize_nd() {
         storage[i] = i as f32;
     }
     let mut ts = FloatTensor::new_with_storage_4d(storage, 1, [2, 2, 2, 1], [4, 2, 1]);
-    ts.resize_nd(2, &[4, 2], &[2]);
+    ts.resize_nd(&[4, 2], &[2]);
     let size = &[4, 2];
 
     for i in 0..ts.dimensions() {
