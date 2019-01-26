@@ -473,7 +473,6 @@ pub struct LongTensor;
 #[TorchTensor(i16 = "ShortStorage")]
 pub struct ShortTensor;
 
-mod convert;
 include!(concat!(env!("OUT_DIR"), "/conv.rs"));
 
 #[cfg(test)]
