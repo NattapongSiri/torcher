@@ -21,13 +21,13 @@ fn implement_type_conversion_for_trait() {
         for dest in &supported_types {
             if src != dest {
                 f.write_all(format!("
-                impl<'a, 'b: 'a> From<&'a {src}<'b>> for {dest}<'b> 
+                impl<'a> From<&'a {src}> for {dest}
                 {{
                     /// Perform type casting from {src} to {dest}.
                     /// This is done by deep cloning on entire storage while also
                     /// casting each element in storage from `u8` to `i8` at the same time.
                     /// The return tensor is completely independent from original tensor.
-                    fn from(src: &'a {src}<'b>) -> {dest}<'b> {{
+                    fn from(src: &'a {src}) -> {dest} {{
                         let (size, stride) = src.shape();
                         let src_data = src.data();
                         let mut storage = {dest_storage}::new_with_size(src_data.len());

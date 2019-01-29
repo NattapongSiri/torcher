@@ -1,91 +1,182 @@
+//! An entry point to create a new tensor.
+//! This crate is root crate holding two public sub crates.
+//! - storage
+//! - tensor
+//! 
+//! # Simple use case:
+//! ## Known size tensor
+//! Use `populate_tensor!(type, size, |(index, ref_mut_value)| {});`
+//! ### Example
+//! To create ByteTensor with 16 elements similar to torch.range(16, dtype=torch.byte):
+//! ```Rust
+//! let tensor = populate_tensor!(u8, 16, |i, v| {*v = i as u8});
+//! ```
+//! 
+//! To create DoubleTensor with 8 elements similar to torch.range(8, dtype=torch.double):
+//! ```Rust
+//! let tensor = populate_tensor!(f64, 8, |i, v| {*v = i as f64});
+//! ```
+//! ## Derive size automatically from closure
+//! ```Rust
+//! let tensor = populate_tensor!(type, || {});
+//! ```
+//! where closure return a slice.
+//! ### Example
+//! To create ByteTensor result of other operation that return a slice of u8.
+//! ```Rust
+//! let tensor = populate_tensor!(u8, || some_op());
+//! ```
+//! 
+//! To create DoubleTensor with 8 elements similar to torch.range(8, dtype=torch.double):
+//! ```Rust
+//! let mut buffer: Vec<f64> = Vec::new();
+//! 
+//! let tensor = populate_tensor!(f64, || {
+//!     // load data from file into buffer
+//!     // ...
+//! 
+//!     // finally return a slice
+//!     buffer.as_slice()
+//! });
+//! ```
 pub extern crate storage;
 pub extern crate tensor;
 
 use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor, Tensor};
 
-/// Convert existing type into Tensor derivative type.
-/// This is a copy operation which will copy every
-/// data from self to return Tensor.
-pub trait ToTensor<T, U> 
-where T: Tensor<U>
-{
-    fn tensor(&self) -> T;
-}
+// import generated code from build script.
+include!(concat!(env!("OUT_DIR"), "/pop_tensor.rs"));
 
-impl<'a> ToTensor<FloatTensor<'a>, f32> for [f32]
-{
-    fn tensor(&self) -> FloatTensor<'a> {
-        let n = self.len();
-        let mut tensor = FloatTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, f)| data[i] = *f);
+#[cfg(test)]
+mod tests {
+    use tensor::*;
+    #[test]
+    fn test_populate_fixed_char_tensor() {
+        
+        let tensor = populate_tensor!(i8, 3, |(i, v)| {
+            *v = (i * i) as i8;
+        });
 
-        tensor
+        assert_eq!(tensor.data(), &[0, 1, 4]);
     }
-}
 
-impl<'a> ToTensor<DoubleTensor<'a>, f64> for [f64] {
-    fn tensor(&self) -> DoubleTensor<'a> {
-        let n = self.len();
-        let mut tensor = DoubleTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, d)| data[i] = *d);
+    #[test]
+    fn test_populate_unsized_char_tensor() {
+        let data = &[1, 2, 3, 4];
+        let tensor = populate_tensor!(i8, || {data});
 
-        tensor
+        assert_eq!(tensor.data(), data);
     }
-}
 
-impl<'a> ToTensor<ByteTensor<'a>, u8> for [u8] {
-    fn tensor(&self) -> ByteTensor<'a> {
-        let n = self.len();
-        let mut tensor = ByteTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, b)| data[i] = *b);
+    #[test]
+    fn test_populate_fixed_byte_tensor() {
+        
+        let tensor = populate_tensor!(u8, 3, |(i, v)| {
+            *v = (i * i) as u8;
+        });
 
-        tensor
+        assert_eq!(tensor.data(), &[0, 1, 4]);
     }
-}
 
-impl<'a> ToTensor<CharTensor<'a>, i8> for [i8] {
-    fn tensor(&self) -> CharTensor<'a> {
-        let n = self.len();
-        let mut tensor = CharTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, c)| data[i] = *c);
+    #[test]
+    fn test_populate_unsized_byte_tensor() {
+        let data = &[1, 2, 3, 4];
+        let tensor = populate_tensor!(u8, || {data});
 
-        tensor
+        assert_eq!(tensor.data(), data);
     }
-}
 
-impl<'a> ToTensor<IntTensor<'a>, i32> for [i32] {
-    fn tensor(&self) -> IntTensor<'a> {
-        let n = self.len();
-        let mut tensor = IntTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
+    #[test]
+    fn test_populate_fixed_float_tensor() {
+        
+        let tensor = populate_tensor!(f32, 3, |(i, v)| {
+            *v = (i * i) as f32;
+        });
 
-        tensor
+        assert_eq!(tensor.data(), &[0f32, 1.0, 4.0]);
     }
-}
 
-impl<'a> ToTensor<LongTensor<'a>, i64> for [i64] {
-    fn tensor(&self) -> LongTensor<'a> {
-        let n = self.len();
-        let mut tensor = LongTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
+    #[test]
+    fn test_populate_unsized_float_tensor() {
+        let data = &[1f32, 2.0, 3.0, 4.0];
+        let tensor = populate_tensor!(f32, || {data});
 
-        tensor
+        assert_eq!(tensor.data(), data);
     }
-}
 
-impl<'a> ToTensor<ShortTensor<'a>, i16> for [i16] {
-    fn tensor(&self) -> ShortTensor<'a> {
-        let n = self.len();
-        let mut tensor = ShortTensor::new_with_size_1d(n);
-        let data = tensor.data_mut();
-        self.iter().enumerate().for_each(|(i, v)| data[i] = *v);
+    #[test]
+    fn test_populate_fixed_double_tensor() {
+        
+        let tensor = populate_tensor!(f64, 3, |(i, v)| {
+            *v = (i * i) as f64;
+        });
 
-        tensor
+        assert_eq!(tensor.data(), &[0f64, 1.0, 4.0]);
+    }
+
+    #[test]
+    fn test_populate_unsized_double_tensor() {
+        let data = &[1f64, 2.0, 3.0, 4.0];
+        let tensor = populate_tensor!(f64, || {data});
+
+        assert_eq!(tensor.data(), data);
+    }
+
+    #[test]
+    fn test_populate_fixed_int_tensor() {
+        
+        let tensor = populate_tensor!(i32, 3, |(i, v)| {
+            *v = (i * i) as i32;
+        });
+
+        assert_eq!(tensor.data(), &[0i32, 1, 4]);
+    }
+
+    #[test]
+    fn test_populate_unsized_int_tensor() {
+        let data = &[1i32, 2, 3, 4];
+        let tensor = populate_tensor!(i32, || {data});
+
+        assert_eq!(tensor.data(), data);
+    }
+
+    #[test]
+    fn test_populate_fixed_long_tensor() {
+        
+        let tensor = populate_tensor!(i64, 3, |(i, v)| {
+            *v = (i * i) as i64;
+        });
+
+        assert_eq!(tensor.data(), &[0i64, 1, 4]);
+    }
+
+    #[test]
+    fn test_populate_unsized_long_tensor() {
+        let data = &[1i64, 2, 3, 4];
+        let tensor = populate_tensor!(i64, || {data});
+
+        assert_eq!(tensor.data(), data);
+    }
+
+    #[test]
+    fn test_populate_fixed_short_tensor() {
+        
+        let tensor = populate_tensor!(i16, 3, |(i, v)| {
+            *v = (i * i) as i16;
+        });
+
+        assert_eq!(tensor.data(), &[0i16, 1, 4]);
+    }
+
+    #[test]
+    fn test_populate_unsized_short_tensor() {
+        // show that data can be owned inside closure.
+        // this is because this style of creating copy data, not ref.
+        let tensor = populate_tensor!(i16, || {
+            let data = &[1i16, 2, 3, 4];
+            data
+        });
+
+        assert_eq!(tensor.data(), &[1i16, 2, 3, 4]);
     }
 }

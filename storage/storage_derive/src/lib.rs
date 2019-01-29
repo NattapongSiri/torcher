@@ -101,32 +101,34 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #free_fn(storage: *mut #c_ty_id);
         }
 
-        pub struct #ident<'a> {
-            _data: &'a mut [#t],
+        pub struct #ident {
+            _data: *mut [#t],
             forget : bool,
             storage : *mut #c_ty_id,
             n : usize
         }
 
-        impl<'a> #ident<'a> {
+        impl #ident {
             /// Get short description of storage.
             /// This includes name of storage, size, and
             /// sample data if it has more than 20 elements.
             /// If it has less than 20 elements, it'll display
             /// every elements.
             fn short_desc(&mut self) -> String {
-                let size = self.n;
-                let data = &self._data;
-                let name = stringify!(#ident);
+                unsafe {
+                    let size = self.n;
+                    let data = &*self._data;
+                    let name = stringify!(#ident);
 
-                if size > 20 {
-                    format!("{}:size={}:first(10)={:?}:last(10)={:?}", name, size,
-                        &data[0..10], &data[(data.len() - 10)..data.len()]
-                    )
-                } else {
-                    format!("{}:size={}:data={:?}", name, size,
-                        data
-                    )
+                    if size > 20 {
+                        format!("{}:size={}:first(10)={:?}:last(10)={:?}", name, size,
+                            &data[0..10], &data[(data.len() - 10)..data.len()]
+                        )
+                    } else {
+                        format!("{}:size={}:data={:?}", name, size,
+                            data
+                        )
+                    }
                 }
             }
 
@@ -142,7 +144,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl<'a> TensorStorage for #ident<'a> {
+        impl TensorStorage for #ident {
             type Datum = #t;
             
             fn new() -> Self {
@@ -151,7 +153,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
                     let size = #size_fn(storage);
 
                     #ident {
-                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size),
+                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size) as *mut [#t],
                         forget: false,
                         storage: storage,
                         n: size
@@ -164,7 +166,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
                     let storage = #new_with_size_fn(size);
                     
                     #ident {
-                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size),
+                        _data: std::slice::from_raw_parts_mut(#data_fn(storage), size) as *mut [#t],
                         forget: false,
                         storage: storage,
                         n: size
@@ -173,11 +175,15 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
 
             fn data(&self) -> &[#t] {
-                self._data
+                unsafe {
+                    &*self._data
+                }
             }
 
             fn data_mut(&mut self) -> &mut [#t] {
-                self._data
+                unsafe {
+                    &mut *self._data
+                }
             }
 
             unsafe fn forget(mut self) -> Self {
@@ -186,7 +192,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
 
             fn fill(&mut self, value: #t) {
-                self._data.iter_mut().for_each(|v| *v = value);
+                self.data_mut().iter_mut().for_each(|v| *v = value);
             }
 
             fn resize(&mut self, size: usize) {
@@ -194,7 +200,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
 
                 unsafe {
                     #resize_fn(self.storage, size);
-                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), size);
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), size) as *mut [#t];
                 }
             }
 
@@ -202,7 +208,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
                 unsafe {
                     #retain_fn(self.storage);
                     self.n = #size_fn(self.storage);
-                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n);
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n) as *mut [#t];
                 }
             }
 
@@ -215,7 +221,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
                     // need to call to Caffe2 to ensure that their storage got swap as well
                     #swap_fn(self.storage, with.storage);
                     self.n = with.n;
-                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n);
+                    self._data = std::slice::from_raw_parts_mut(#data_fn(self.storage), self.n) as *mut [#t];
                 }
             }
         }
@@ -223,27 +229,31 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
         /// For each of usage, it return a slice of actual data
         /// of this struct. For higher throughput, consider using 
         /// [data function](trait.TensorStorage.html#tymethod.data) instead.
-        impl<'a> Deref for #ident<'a> {
+        impl Deref for #ident {
             type Target = [#t];
 
             fn deref(&self) -> &[#t] {
-                self._data
+                unsafe {
+                    &*self._data
+                }
             }
         }
 
         /// For each of usage, it return mutable slice of actual data
         /// of this struct. For higher throughput, consider using 
         /// [data function](trait.TensorStorage.html#tymethod.data) instead.
-        impl<'a> DerefMut for #ident<'a> {
+        impl DerefMut for #ident {
             fn deref_mut(&mut self) -> &mut [#t] {
-                self._data
+                unsafe {
+                    &mut *self._data
+                }
             }
         }
 
         /// Clean up memory allocated outside of Rust.
         /// Unless [forget function](trait.TensorStorage.html#tymethod.forget) is called,
         /// it'll leave underlying storage untouch.
-        impl<'a> Drop for #ident<'a> {
+        impl Drop for #ident {
             fn drop(&mut self) {
                 unsafe {
                     if !self.forget {
@@ -253,14 +263,14 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl<'a> From<*mut #c_ty_id> for #ident<'a> {
-            fn from(c_storage: *mut #c_ty_id) -> #ident<'a> {
+        impl From<*mut #c_ty_id> for #ident {
+            fn from(c_storage: *mut #c_ty_id) -> #ident {
                 unsafe {
                     let size = #size_fn(c_storage);
                     let data = #data_fn(c_storage);
 
                     #ident {
-                        _data: std::slice::from_raw_parts_mut(data, size),
+                        _data: std::slice::from_raw_parts_mut(data, size) as *mut [#t],
                         forget: false, 
                         storage: c_storage,
                         n: size
