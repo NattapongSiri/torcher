@@ -101,16 +101,6 @@ fn impl_storages(dt: &[(&str, &str)], f: &mut File) {
                     {pref}_free(self.storage);
                 }}
             }}
-
-            impl<{t}> Drop for Storage<{t}> {{
-                fn drop(&mut self) {{
-                    unsafe {{
-                        if !self.forget {{
-                            {pref}_free(self.storage);
-                        }}
-                    }}
-                }}
-            }}
         ",
         pref=ty.1,
         t=ty.0).as_bytes()).expect(format!("Fail write \"impl Storage<{}>\"", ty.0).as_str());

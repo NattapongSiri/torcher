@@ -11,7 +11,7 @@ pub struct Storage<T> where T: Send {
     storage: *mut TorchStorage
 }
 
-pub trait StorageOp {
+pub trait StorageOp<T> where T: Send {
     fn new() -> Storage<T>;
     fn new_with_size(size: usize) -> Storage<T>;
     fn data(&self) -> &[T];
@@ -21,10 +21,12 @@ pub trait StorageOp {
     fn resize(&mut self, size: usize);
     fn retain(&mut self);
     fn size(&self) -> usize;
-    fn swap(&mut self, other: &mut Storage<{t}>);
+    fn swap(&mut self, other: &mut Storage<T>);
     fn free(&mut self);
 }
 
-impl<T> Drop for T where T: StorageOp {
-
+impl<T> Drop for T where for<U> T: StorageOp<U> {
+    fn drop(&mut self) {
+        self.free();
+    }
 }
