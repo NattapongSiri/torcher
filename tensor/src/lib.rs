@@ -57,17 +57,19 @@ use std::os::raw::{c_int};
 use storage::{ByteStorage, CharStorage, DoubleStorage, FloatStorage, IntStorage, LongStorage, ShortStorage, TensorStorage};
 use tensor_derive::TorchTensor;
 
-/// A trait that all tensor derivative need to implemented
-pub trait Tensor<T> {
-    type Storage : TensorStorage;
+/// Tensor create operation.
+pub trait CreateOp {
+    type Datum;
+    type Storage: TensorStorage<Datum=Self::Datum>;
+    type Tensor;
 
     /// Construct an empty tensor
-    fn new() -> Self;
+    fn new() -> Self::Tensor;
     /// Always return a new deep clone tensor with contiguous storage according to current size.
     /// In Python, it'll return the same Tensor if it's already contiguous.
     /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
     /// to check first if it's already contiguous.
-    fn new_contiguous(&self) -> Self;
+    fn new_contiguous(&self) -> Self::Tensor;
     /// Create shallow clone of Tensor that share the same storage as this tensor.
     /// This function always success unlike the same function provided by
     /// PyTorch counterpart. If underlying storage doesn't support such operation,
@@ -79,19 +81,19 @@ pub trait Tensor<T> {
     /// # Safety
     /// It's unsafe because the new tensor share underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
+    unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self::Tensor;
     /// ???
     /// 
     /// # Safety
     /// It's unsafe because the new tensor share the underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_select(&self, dim: usize, i: usize) -> Self;
+    unsafe fn new_select(&self, dim: usize, i: usize) -> Self::Tensor;
     /// Transpose between the two dimension and return a tranposed tensor.
     /// 
     /// # Safety
     /// The new tensor share the underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
+    unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self::Tensor;
     /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
     /// and repeatly fill in the value with value copy from given dimension.
     /// The new dimension will have size according to specified size.
@@ -100,52 +102,61 @@ pub trait Tensor<T> {
     /// # Safety
     /// New tensor share underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
+    unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self::Tensor;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
     /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> Self;
+    fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> Self::Tensor;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
     /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> Self;
+    fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> Self::Tensor;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
     /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
+    fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self::Tensor;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
     /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self::Tensor;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
     /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> Self;
+    fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> Self::Tensor;
     /// Create new empty 1d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_1d(size: usize) -> Self;
+    fn new_with_size_1d(size: usize) -> Self::Tensor;
     /// Create new empty 2d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_2d(size: [usize; 2]) -> Self;
+    fn new_with_size_2d(size: [usize; 2]) -> Self::Tensor;
     /// Create new empty 3d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_3d(size: [usize; 3]) -> Self;
+    fn new_with_size_3d(size: [usize; 3]) -> Self::Tensor;
     /// Create new empty 4d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_4d(size: [usize; 4]) -> Self;
+    fn new_with_size_4d(size: [usize; 4]) -> Self::Tensor;
+}
+
+/// Basic tensor operation for simple data manipulation.
+/// This includes data read/write operation and tensor shape
+/// related operation.
+pub trait BasicManipulateOp {
+    type Datum;
+    type Storage: TensorStorage<Datum=Self::Datum>;
+    type Tensor: BasicManipulateOp;
 
     /// Return a slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
@@ -158,7 +169,7 @@ pub trait Tensor<T> {
     /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
     /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
     /// ```
-    fn data(&self) -> &[T];
+    fn data(&self) -> &[Self::Datum];
     /// Return a mutable slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
     /// # Examples
@@ -170,29 +181,29 @@ pub trait Tensor<T> {
     /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
     /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
     /// ```
-    fn data_mut(&mut self) -> &mut [T];
+    fn data_mut(&mut self) -> &mut [Self::Datum];
     /// Just a wrapper to Caffe2 function.
     /// It currently only print size of tensor.
     fn desc(&self) -> String;
     /// Get total number of dimension this tensor is representing.
     fn dimensions(&self) -> usize;
     /// Get scalar value out of this scalar tensor.
-    fn get_0d(&self) -> T;
+    fn get_0d(&self) -> Self::Datum;
     /// Get scalar value from given index of tensor.
-    fn get_1d(&self, i: usize) -> T;
+    fn get_1d(&self, i: usize) -> Self::Datum;
     /// Get scalar value from given indices of 2d tensor.
-    fn get_2d(&self, i: [usize; 2]) -> T;
+    fn get_2d(&self, i: [usize; 2]) -> Self::Datum;
     /// Get scalar value from given indices of 3d tensor
-    fn get_3d(&self, i: [usize; 3]) -> T;
+    fn get_3d(&self, i: [usize; 3]) -> Self::Datum;
     /// Get scalar value from given indices of 4d tensor
-    fn get_4d(&self, i: [usize; 4]) -> T;
+    fn get_4d(&self, i: [usize; 4]) -> Self::Datum;
     /// Check if current tensor is contiguous
     fn is_contiguous(&self) -> bool;
     /// Total number of element this tensor is representing.
     /// It may not be equals to number return by `data().len()`
     fn numel(&self) -> usize;
     /// Resize into the shape similar to given tensor
-    fn resize_as(&mut self, ref_tensor: &Self) {
+    fn resize_as(&mut self, ref_tensor: &Self::Tensor) {
         let ref_shape = ref_tensor.shape();
 
         self.resize_nd(ref_shape.0, ref_shape.1);
@@ -212,7 +223,6 @@ pub trait Tensor<T> {
     /// Resize tensor to new size and reset stride to [size[1], size[2], 1].
     /// This will reset all view applied to this tensor.
     fn resize_3d(&mut self, size: [usize; 3]);
-
     // resize4d and resize5d cause corrupted tensor.
     // github issue tracker url:
     // https://github.com/pytorch/pytorch/issues/16138
@@ -227,23 +237,23 @@ pub trait Tensor<T> {
     /// `stride` need to have `stride.len() == dim - 1`
     fn resize_nd(&mut self, size: &[usize], stride: &[usize]);
     /// Set scalar tensor to specific value
-    fn set_0d(&mut self, v: T);
+    fn set_0d(&mut self, v: Self::Datum);
     /// Set 1d tensor at index `i` to given `v`
     /// 
     /// This function perform index conversion base on size/stride on each call.
-    fn set_1d(&mut self, i: usize, v: T);
+    fn set_1d(&mut self, i: usize, v: Self::Datum);
     /// Set 2d tensor at index `i` to given `v`
     /// 
     /// This function perform index conversion base on size/stride on each call.
-    fn set_2d(&mut self, i: [usize; 2], v: T);
+    fn set_2d(&mut self, i: [usize; 2], v: Self::Datum);
     /// Set 3d tensor at index `i` to given `v`
     /// 
     /// This function perform index conversion base on size/stride on each call.
-    fn set_3d(&mut self, i: [usize; 3], v: T);
+    fn set_3d(&mut self, i: [usize; 3], v: Self::Datum);
     /// Set 4d tensor at index `i` to given `v`
     /// 
     /// This function perform index conversion base on size/stride on each call.
-    fn set_4d(&mut self, i: [usize; 4], v: T);
+    fn set_4d(&mut self, i: [usize; 4], v: Self::Datum);
     /// Return tuple of size and stride of this tensor
     fn shape(&self) -> (&[usize], &[usize]);
     /// Return size of given dimension of this tensor
@@ -255,9 +265,142 @@ pub trait Tensor<T> {
     fn storage_offset(&self) -> usize;
     /// Return stride of given dimension of this tensor
     fn stride(&self, dim: usize) -> usize;
+}
+
+/// View related operation
+pub trait ViewOp {
+    type Tensor: Tensor;
+
     /// Perform tensor squeeze. It'll flatten any dimension
-    /// that have size 1
-    fn squeeze(&self) -> Self;
+    /// that have size 1 and return the new squeezed TensorView
+    fn squeeze(self) -> TensorView<Self::Tensor>;
+}
+
+/// A trait that all concrete tensor derivative need to implemented
+pub trait Tensor: 
+BasicManipulateOp<Datum=<Self as Tensor>::Datum, Storage=<Self as Tensor>::Storage> + 
+CreateOp<Datum=<Self as Tensor>::Datum, Storage=<Self as Tensor>::Storage> +
+ViewOp
+{
+    type Datum;
+    type Storage: TensorStorage<Datum=<Self as Tensor>::Datum>;
+}
+
+/// A view wrapped Tensor. It provide safety abstraction when
+/// viewing tensor. 
+pub struct TensorView<T> where T: Tensor {
+    original: T,
+    view: T
+}
+
+impl<T> TensorView<T> where T: Tensor {
+    /// Consume the view and return the original tensor
+    pub fn original(self) -> T {
+        self.original
+    }
+}
+
+/// Simple data manipulation on the tensor in view.
+impl<T> BasicManipulateOp for TensorView<T> where T: Tensor {
+    type Datum = <T as Tensor>::Datum;
+    type Storage = <T as Tensor>::Storage;
+    type Tensor = T;
+
+    fn data(&self) -> &[Self::Datum] {
+        self.view.data()
+    }
+    fn data_mut(&mut self) -> &mut [Self::Datum] {
+        self.view.data_mut()
+    }
+    fn desc(&self) -> String {
+        self.view.desc()
+    }
+    fn dimensions(&self) -> usize {
+        self.view.dimensions()
+    }
+    fn get_0d(&self) -> Self::Datum {
+        self.view.get_0d()
+    }
+    fn get_1d(&self, i: usize) -> Self::Datum {
+        self.view.get_1d(i)
+    }
+    fn get_2d(&self, i: [usize; 2]) -> Self::Datum {
+        self.view.get_2d(i)
+    }
+    fn get_3d(&self, i: [usize; 3]) -> Self::Datum {
+        self.view.get_3d(i)
+    }
+    fn get_4d(&self, i: [usize; 4]) -> Self::Datum {
+        self.view.get_4d(i)
+    }
+    fn is_contiguous(&self) -> bool {
+        self.view.is_contiguous()
+    }
+    fn numel(&self) -> usize {
+        self.view.numel()
+    }
+    fn resize_0d(&mut self) {
+        self.view.resize_0d();
+    }
+    fn resize_1d(&mut self, size: usize) {
+        self.view.resize_1d(size);
+    }
+    fn resize_2d(&mut self, size: [usize; 2]) {
+        self.view.resize_2d(size);
+    }
+    fn resize_3d(&mut self, size: [usize; 3]) {
+        self.view.resize_3d(size);
+    }
+    fn resize_nd(&mut self, size: &[usize], stride: &[usize]) {
+        self.view.resize_nd(size, stride);
+    }
+    fn set_0d(&mut self, v: Self::Datum) {
+        self.view.set_0d(v);
+    }
+    fn set_1d(&mut self, i: usize, v: Self::Datum) {
+        self.view.set_1d(i, v);
+    }
+    fn set_2d(&mut self, i: [usize; 2], v: Self::Datum) {
+        self.view.set_2d(i, v);
+    }
+    fn set_3d(&mut self, i: [usize; 3], v: Self::Datum) {
+        self.view.set_3d(i, v);
+    }
+    fn set_4d(&mut self, i: [usize; 4], v: Self::Datum) {
+        self.view.set_4d(i, v);
+    }
+    fn shape(&self) -> (&[usize], &[usize]) {
+        self.view.shape()
+    }
+    fn size(&self, dim: usize) -> usize {
+        self.view.size(dim)
+    }
+    fn storage(&mut self) -> &mut Option<Self::Storage> {
+        self.view.storage()
+    }
+    fn storage_offset(&self) -> usize {
+        self.view.storage_offset()
+    }
+    fn stride(&self, dim: usize) -> usize {
+        self.view.stride(dim)
+    }
+}
+
+impl<T> ViewOp for TensorView<T>
+where T: ViewOp<Tensor=T> + Tensor
+{
+    type Tensor = <T as ViewOp>::Tensor;
+    /// Perform tensor squeeze. It'll flatten any dimension
+    /// that have size 1 and return the new squeezed TensorView
+    /// __Note:__ It'll save original tensor along
+    /// with new view. The original tensor is the tensor before
+    /// first view operation is perform.
+    fn squeeze(self) -> TensorView<Self::Tensor> {
+        Self {
+            original: self.original,
+            view: self.view.squeeze().view 
+        }
+    }
 }
 
 /// An Iterator over tensor data.

@@ -231,8 +231,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl Tensor<#t> for #ident {
+        impl CreateOp for #ident {
+            type Datum = #t;
             type Storage = #store_ty_id;
+            type Tensor = #ident;
 
             fn new() -> #ident {
                 unsafe {
@@ -712,6 +714,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }
                 }
             }
+        }
+
+        impl BasicManipulateOp for #ident {
+            type Datum = #t;
+            type Storage = #store_ty_id;
+            type Tensor = #ident;
 
             fn data(&self) -> &[#t] {
                 unsafe {
@@ -952,8 +960,12 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     #stride_fn(self.tensor, dim as c_int) as usize
                 }
             }
+        }
 
-            fn squeeze(&self) -> Self {
+        impl ViewOp for #ident {
+            type Tensor = #ident;
+
+            fn squeeze(self) -> TensorView<#ident> {
                 let mut new_ts = Self::new();
                 unsafe {
                     #squeeze_fn(new_ts.tensor, self.tensor);
@@ -976,9 +988,17 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     new_ts.storage_bound = storage_bound;
                     new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), storage_bound);
 
-                    new_ts
+                    TensorView {
+                        original: self,
+                        view: new_ts
+                    }
                 }
             }
+        }
+
+        impl Tensor for #ident {
+            type Datum = #t;
+            type Storage = #store_ty_id;
         }
 
         impl<'a> Clone for #ident {
