@@ -539,8 +539,9 @@ fn float_squeeze() {
         storage[i] = i as f32;
     }
     let ts = FloatTensor::new_with_storage_4d(storage, 2, [2, 1, 2, 1], [4, 2, 1]);
+    let ref_ts : &Tensor<Tensor::Datum=f32, Tensor::Storage=FloatStorage<Datum=f32>, Tensor::Tensor=FloatTensor = &ts;
 
-    let squeezed = ts.squeeze();
+    let squeezed = ref_ts.squeeze();
 
     assert_eq!(&[2usize, 2], squeezed.shape().0);
 }
