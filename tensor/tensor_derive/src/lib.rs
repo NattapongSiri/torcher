@@ -113,6 +113,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     let set_3d_fn = _make_ident(&c_ty, "_set3d");
     let set_4d_fn = _make_ident(&c_ty, "_set4d");
     let size_fn = _make_ident(&c_ty, "_size");
+    let storage_nd_fn = _make_ident(&c_ty, "_setStorageNd");
     let storage_fn = _make_ident(&c_ty, "_storage");
     let storage_offset_fn = _make_ident(&c_ty, "_storageOffset");
     let stride_fn = _make_ident(&c_ty, "_stride");
@@ -173,6 +174,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #set_3d_fn(tensor: *const #c_ty_id, i: i64, j: i64, k: i64, v: #t);
             fn #set_4d_fn(tensor: *const #c_ty_id, i: i64, j: i64, k: i64, l: i64, v: #t);
             fn #size_fn(tensor: *const #c_ty_id, dim: c_int) -> i64;
+            fn #storage_nd_fn(tensor: *const #c_ty_id, storage: #c_storage_ty_id, offset: i64, dim: c_int, size: *const i64, stride: *const i64);
             fn #storage_fn(tensor: *mut #c_ty_id) -> *mut #c_storage_ty_id;
             fn #storage_offset_fn(tensor: *const #c_ty_id) -> i64;
             fn #stride_fn(tensor: *const #c_ty_id, dim: c_int) -> i64;
@@ -962,6 +964,8 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
+        impl UtilityOp for #ident {}
+
         impl ViewOp for #ident {
             type Tensor = #ident;
 
@@ -992,6 +996,32 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         original: self,
                         view: new_ts
                     }
+                }
+            }
+
+            fn view(self, sizes: &[Option<usize>]) -> Result<TensorView<#ident>, ViewError> {
+                unsafe {
+                    let new_size = self.infer_size(sizes)?;
+                    let new_stride = self.compute_stride(&new_size)?;
+                    let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
+                    let storage_bound = self.storage_bound;
+                    let data = self.data;
+                    let tensor = self.tensor;
+
+                    Ok(
+                        TensorView {
+                            original: self,
+                            view: #ident {
+                                data: data,
+                                forget : true, // view share underlying tensor
+                                storage : Some(storage),
+                                storage_bound: storage_bound,
+                                tensor : tensor,
+                                size : new_size,
+                                stride : new_stride
+                            }
+                        }
+                    )
                 }
             }
         }

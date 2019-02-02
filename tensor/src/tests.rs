@@ -546,6 +546,32 @@ fn float_squeeze() {
 }
 
 #[test]
+fn float_view() {
+    let mut ts = FloatTensor::new_with_size_1d(10);
+    ts.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    let ts_v = ts.view(&[Some(5), Some(2)]).unwrap();
+    let expected_size : &[usize] = &[5, 2];
+    let expected_stride: &[usize] = &[2, 1];
+    assert_eq!((expected_size, expected_stride), ts_v.shape());
+}
+
+#[test]
+fn float_deep_view() {
+    let mut ts = FloatTensor::new_with_size_1d(36);
+    ts.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    let ts_v = ts.view(&[Some(2), Some(18)]).unwrap();
+    // view on view
+    let ts_v2 = ts_v.view(&[Some(2), Some(3), Some(3), None],).unwrap();
+    // view on view on view.
+    let ts_v3 = ts_v2.view(&[Some(2), Some(2), Some(3), None]).unwrap();
+    let expected_size : &[usize] = &[2, 2, 3, 3];
+    let expected_stride: &[usize] = &[18, 9, 3, 1];
+    assert_eq!((expected_size, expected_stride), ts_v3.shape());
+    // elements shall still in ascending order
+    ts_v3.iter().enumerate().for_each(|(i, v)| assert_eq!(i as f32, v)); 
+}
+
+#[test]
 #[ignore]
 fn bench_deref() {
     use std::time::Instant;
