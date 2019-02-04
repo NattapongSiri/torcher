@@ -263,6 +263,19 @@ fn float_select() {
 #[test]
 fn float_narrow() {
     let mut storage = FloatStorage::new_with_size(10);
+    storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+
+    let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
+    let tv = ts.narrow(&[1..4, 0..2]).unwrap();
+    
+    assert_eq!("torch.xTensor of size 3x2", tv.desc());
+    let expected = &[3f32, 4.0, 5.0, 6.0, 7.0, 8.0];
+    tv.iter().zip(expected.iter()).for_each(|(v, e)| assert_eq!(v, *e));
+}
+
+#[test]
+fn float_new_narrow() {
+    let mut storage = FloatStorage::new_with_size(10);
     storage[4] = 2f32;
     storage[5] = 1f32;
     unsafe {
@@ -286,6 +299,22 @@ fn float_transpose() {
         
         assert_eq!("torch.xTensor of size 2x4", tp.desc());
     }
+}
+
+#[test]
+fn float_deep_view() {
+    let mut ts = FloatTensor::new_with_size_1d(36);
+    ts.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    let ts_v = ts.view(&[Some(2), Some(18)]).unwrap();
+    // view on view
+    let ts_v2 = ts_v.view(&[Some(2), Some(3), Some(3), None],).unwrap();
+    // view on view on view.
+    let ts_v3 = ts_v2.view(&[Some(2), Some(2), Some(3), None]).unwrap();
+    let expected_size : &[usize] = &[2, 2, 3, 3];
+    let expected_stride: &[usize] = &[18, 9, 3, 1];
+    assert_eq!((expected_size, expected_stride), ts_v3.shape());
+    // elements shall still in ascending order
+    ts_v3.iter().enumerate().for_each(|(i, v)| assert_eq!(i as f32, v)); 
 }
 
 #[test]
@@ -553,22 +582,6 @@ fn float_view() {
     let expected_size : &[usize] = &[5, 2];
     let expected_stride: &[usize] = &[2, 1];
     assert_eq!((expected_size, expected_stride), ts_v.shape());
-}
-
-#[test]
-fn float_deep_view() {
-    let mut ts = FloatTensor::new_with_size_1d(36);
-    ts.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
-    let ts_v = ts.view(&[Some(2), Some(18)]).unwrap();
-    // view on view
-    let ts_v2 = ts_v.view(&[Some(2), Some(3), Some(3), None],).unwrap();
-    // view on view on view.
-    let ts_v3 = ts_v2.view(&[Some(2), Some(2), Some(3), None]).unwrap();
-    let expected_size : &[usize] = &[2, 2, 3, 3];
-    let expected_stride: &[usize] = &[18, 9, 3, 1];
-    assert_eq!((expected_size, expected_stride), ts_v3.shape());
-    // elements shall still in ascending order
-    ts_v3.iter().enumerate().for_each(|(i, v)| assert_eq!(i as f32, v)); 
 }
 
 #[test]

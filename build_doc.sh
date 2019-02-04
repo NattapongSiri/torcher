@@ -1,5 +1,5 @@
 #! /bin/bash
-cargo doc -p storage -p tensor --no-deps
+cargo doc -p storage -p tensor -p shape_derive --no-deps
 if [ $? -eq 0 ]
 then
     cargo doc --no-deps

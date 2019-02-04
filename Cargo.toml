@@ -7,12 +7,15 @@ license = "BSD-4-Clause"
 build = "build.rs"
 
 [dependencies]
+proc-macro-hack = "0.5"
+shape_derive = { path = "shape_derive" }
 storage = { path = "storage" }
 tensor = { path = "tensor" }
 
 [workspace]
 members = [
     "common",
+    "shape_derive",
     "storage",
     "tensor"
 ]

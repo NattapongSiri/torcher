@@ -233,10 +233,8 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl CreateOp for #ident {
+        impl CreateOp<#store_ty_id> for #ident {
             type Datum = #t;
-            type Storage = #store_ty_id;
-            type Tensor = #ident;
 
             fn new() -> #ident {
                 unsafe {
@@ -405,7 +403,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> #ident {
+            fn new_with_storage_1d(store: #store_ty_id, offset: usize, size: usize) -> #ident {
                 unsafe {
                     // Caffe2 stride of 1d doesn't matter. It can be set to any value.
                     let tensor = #new_with_storage_1d_fn(store.storage(), offset, size, 1);
@@ -423,7 +421,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> #ident {
+            fn new_with_storage_2d(store: #store_ty_id, offset: usize, size: [usize; 2], stride: usize) -> #ident {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_2d_fn(store.storage(), offset, size[0], stride, size[1], 1);
@@ -457,7 +455,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> #ident {
+            fn new_with_storage_3d(store: #store_ty_id, offset: usize, size: [usize; 3], stride: [usize; 2]) -> #ident {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_3d_fn(store.storage(), offset, size[0], stride[0], size[1], stride[1], size[2], 1);
@@ -491,7 +489,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> #ident {
+            fn new_with_storage_4d(store: #store_ty_id, offset: usize, size: [usize; 4], stride: [usize; 3]) -> #ident {
                 unsafe {
                     // Caffe2 last dim doesn't have stride so it can be set to any value.
                     let tensor = #new_with_storage_4d_fn(store.storage(), offset, size[0], stride[0], size[1], stride[1], size[2], stride[2], size[3], 1);
@@ -526,7 +524,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> #ident {
+            fn new_with_storage_nd(store: #store_ty_id, offset: usize, size: &[usize], stride: &[usize]) -> #ident {
                 assert!(size.len() == stride.len() - 1 || size.len() == stride.len(), "Stride shall have either n - 1 elements or n elements where n = size.len()");
                 
                 let mut storage_len = 0;
@@ -565,7 +563,6 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
 
                     let storage_bound = big_bound + size[size.len() - 1] - 1;
                     let mut stride = stride.to_vec();
-                    stride.push(1); // last dim stride for sake of consistency
                     let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
@@ -716,12 +713,16 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }
                 }
             }
+
+            unsafe fn forget(mut self) -> Self {
+                self.forget = true;
+
+                self
+            }
         }
 
-        impl BasicManipulateOp for #ident {
+        impl BasicManipulateOp<#store_ty_id> for #ident {
             type Datum = #t;
-            type Storage = #store_ty_id;
-            type Tensor = #ident;
 
             fn data(&self) -> &[#t] {
                 unsafe {
@@ -946,7 +947,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
-            fn storage(&mut self) -> &mut Option<Self::Storage> {
+            fn storage(&mut self) -> &mut Option<#store_ty_id> {
                 &mut self.storage
             }
 
@@ -964,11 +965,42 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
-        impl UtilityOp for #ident {}
+        impl UtilityOp<#store_ty_id> for #ident {}
 
-        impl ViewOp for #ident {
-            type Tensor = #ident;
+        impl ViewOp<#ident> for #ident {
+            fn original(self) -> #ident {
+                self
+            }
 
+            fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<#ident>, NarrowError> {
+                let (cur_shape, cur_stride) = self.shape();
+                let mut new_size = Vec::with_capacity(bound.len());
+                let mut offset = self.storage_offset();
+
+                // check every dimension whether the range is in boundary
+                for (((dim, u_bound), cur_stride), new_bound) in cur_shape.iter().enumerate().zip(cur_stride.iter()).zip(bound.iter()) {
+                    if *u_bound < new_bound.end {
+                        return Err(NarrowError {dim: dim})
+                    } else {
+                        // calculate new size and new storage offset
+                        new_size.push(new_bound.end - new_bound.start);
+                        offset += new_bound.start * *cur_stride;
+                    }
+                }
+
+                unsafe {
+                    let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
+                    let tensor = #ident::new_with_storage_nd(storage, offset, &new_size, &cur_stride);
+
+                    Ok(
+                        TensorView {
+                            original: self,
+                            view: tensor
+                        }
+                    )
+                }
+            }
+            
             fn squeeze(self) -> TensorView<#ident> {
                 let mut new_ts = Self::new();
                 unsafe {
@@ -1003,23 +1035,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 unsafe {
                     let new_size = self.infer_size(sizes)?;
                     let new_stride = self.compute_stride(&new_size)?;
-                    let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
-                    let storage_bound = self.storage_bound;
-                    let data = self.data;
-                    let tensor = self.tensor;
+                    let offset = self.storage_offset();
+                    let mut storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
+                    let ts = #ident::new_with_storage_nd(storage, offset, &new_size, &new_stride);
 
                     Ok(
                         TensorView {
                             original: self,
-                            view: #ident {
-                                data: data,
-                                forget : true, // view share underlying tensor
-                                storage : Some(storage),
-                                storage_bound: storage_bound,
-                                tensor : tensor,
-                                size : new_size,
-                                stride : new_stride
-                            }
+                            view: ts
                         }
                     )
                 }

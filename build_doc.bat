@@ -1,4 +1,4 @@
-cargo doc -p storage -p tensor --no-deps
+cargo doc -p storage -p tensor -p shape_derive --no-deps
 @IF ERRORLEVEL 1 GOTO DepFail
 cargo doc --no-deps
 @IF ERRORLEVEL 1 GOTO RootFail

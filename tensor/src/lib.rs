@@ -50,6 +50,7 @@ extern crate common;
 extern crate storage;
 extern crate tensor_derive;
 
+use core::ops::Range;
 use common::THDescBuff;
 use std::cmp;
 use std::iter::Iterator;
@@ -61,10 +62,8 @@ use tensor_derive::TorchTensor;
 /// Basic tensor operation for simple data manipulation.
 /// This includes data read/write operation and tensor shape
 /// related operation.
-pub trait BasicManipulateOp {
+pub trait BasicManipulateOp<S: TensorStorage> {
     type Datum;
-    type Storage: TensorStorage<Datum=Self::Datum>;
-    type Tensor: BasicManipulateOp;
 
     /// Return a slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
@@ -111,7 +110,7 @@ pub trait BasicManipulateOp {
     /// It may not be equals to number return by `data().len()`
     fn numel(&self) -> usize;
     /// Resize into the shape similar to given tensor
-    fn resize_as(&mut self, ref_tensor: &Self::Tensor) {
+    fn resize_as(&mut self, ref_tensor: &Self) {
         let ref_shape = ref_tensor.shape();
 
         self.resize_nd(ref_shape.0, ref_shape.1);
@@ -168,7 +167,7 @@ pub trait BasicManipulateOp {
     fn size(&self, dim: usize) -> usize;
     /// Return underlying storage.
     /// If it's empty tensor, it may be None
-    fn storage(&mut self) -> &mut Option<Self::Storage>;
+    fn storage(&mut self) -> &mut Option<S>;
     /// Return storage offset of this tensor
     fn storage_offset(&self) -> usize;
     /// Return stride of given dimension of this tensor
@@ -176,18 +175,16 @@ pub trait BasicManipulateOp {
 }
 
 /// Tensor create operation.
-pub trait CreateOp {
+pub trait CreateOp<S: TensorStorage> {
     type Datum;
-    type Storage: TensorStorage<Datum=Self::Datum>;
-    type Tensor;
 
     /// Construct an empty tensor
-    fn new() -> Self::Tensor;
+    fn new() -> Self;
     /// Always return a new deep clone tensor with contiguous storage according to current size.
     /// In Python, it'll return the same Tensor if it's already contiguous.
     /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
     /// to check first if it's already contiguous.
-    fn new_contiguous(&self) -> Self::Tensor;
+    fn new_contiguous(&self) -> Self;
     /// Create shallow clone of Tensor that share the same storage as this tensor.
     /// This function always success unlike the same function provided by
     /// PyTorch counterpart. If underlying storage doesn't support such operation,
@@ -199,19 +196,19 @@ pub trait CreateOp {
     /// # Safety
     /// It's unsafe because the new tensor share underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self::Tensor;
+    unsafe fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
     /// ???
     /// 
     /// # Safety
     /// It's unsafe because the new tensor share the underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_select(&self, dim: usize, i: usize) -> Self::Tensor;
+    unsafe fn new_select(&self, dim: usize, i: usize) -> Self;
     /// Transpose between the two dimension and return a tranposed tensor.
     /// 
     /// # Safety
     /// The new tensor share the underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self::Tensor;
+    unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
     /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
     /// and repeatly fill in the value with value copy from given dimension.
     /// The new dimension will have size according to specified size.
@@ -220,68 +217,81 @@ pub trait CreateOp {
     /// # Safety
     /// New tensor share underlying storage with this tensor.
     /// The new tensor will never free underlying storage.
-    unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self::Tensor;
+    unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
-    /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_1d(store: Self::Storage, offset: usize, size: usize) -> Self::Tensor;
+    /// The underlying storage will be free when this tensor is drop
+    fn new_with_storage_1d(store: S, offset: usize, size: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
-    /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_2d(store: Self::Storage, offset: usize, size: [usize; 2], stride: usize) -> Self::Tensor;
+    /// The underlying storage will be free when this tensor is drop
+    fn new_with_storage_2d(store: S, offset: usize, size: [usize; 2], stride: usize) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
-    /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_3d(store: Self::Storage, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self::Tensor;
+    /// The underlying storage will be free when this tensor is drop
+    fn new_with_storage_3d(store: S, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
-    /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_4d(store: Self::Storage, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self::Tensor;
+    /// The underlying storage will be free when this tensor is drop
+    fn new_with_storage_4d(store: S, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
     /// Consume storage and associate it with new tensor.
     /// It map directly with Caffe2 function that responsible to do the similar task.
     /// 
-    /// The underlying storage will be free awhen this tensor is drop
-    fn new_with_storage_nd(store: Self::Storage, offset: usize, size: &[usize], stride: &[usize]) -> Self::Tensor;
+    /// The underlying storage will be free when this tensor is drop
+    fn new_with_storage_nd(store: S, offset: usize, size: &[usize], stride: &[usize]) -> Self;
     /// Create new empty 1d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_1d(size: usize) -> Self::Tensor;
+    fn new_with_size_1d(size: usize) -> Self;
     /// Create new empty 2d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_2d(size: [usize; 2]) -> Self::Tensor;
+    fn new_with_size_2d(size: [usize; 2]) -> Self;
     /// Create new empty 3d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_3d(size: [usize; 3]) -> Self::Tensor;
+    fn new_with_size_3d(size: [usize; 3]) -> Self;
     /// Create new empty 4d tensor with contiguous stride.
     /// 
     /// The underlying storage will always automatically free by
     /// Caffe2 lib
-    fn new_with_size_4d(size: [usize; 4]) -> Self::Tensor;
+    fn new_with_size_4d(size: [usize; 4]) -> Self;
+
+    /// Leak this tensor. It'll not clean up memory occupy by this
+    /// tensor when it goes out of scope.
+    /// 
+    /// # Safety
+    /// It cause memory leak if all instant that use underlying
+    /// Caffe2 tensors are mark with forget.
+    /// There should be one and only one tensor that doesn't forget
+    /// it underlying Caffe2 tensor.
+    unsafe fn forget(self) -> Self;
 }
 
 /// A trait that all concrete tensor derivative need to implemented
 pub trait Tensor: 
-BasicManipulateOp<Datum=<Self as Tensor>::Datum, Storage=<Self as Tensor>::Storage> + 
-CreateOp<Datum=<Self as Tensor>::Datum, Storage=<Self as Tensor>::Storage> +
-ViewOp
+BasicManipulateOp<<Self as Tensor>::Storage, Datum=<Self as Tensor>::Datum> + 
+CreateOp<<Self as Tensor>::Storage, Datum=<Self as Tensor>::Datum> +
+ViewOp<Self>
+where Self: Sized
 {
     type Datum;
     type Storage: TensorStorage<Datum=<Self as Tensor>::Datum>;
 }
 
-trait UtilityOp: BasicManipulateOp {
+trait UtilityOp<S>: BasicManipulateOp<S>
+where S: TensorStorage
+{
     /// This function will convert a None entry in size into numeric.
-    /// It'll panic if the there's more than one None inside `sizes`.
-    /// It'll panic if the new sizes and old sizes have different number
+    /// It'll return Err if the there's more than one None inside `sizes`.
+    /// It'll return Err if the new sizes and old sizes have different number
     /// of elements and there's no single `None` element.
     /// It'll also panic if all the specified size use up all elements of 
     /// the tensor and there's one `None` element.
@@ -305,7 +315,7 @@ trait UtilityOp: BasicManipulateOp {
             }
         }
 
-        if numel == new_size || (infer_dim.is_some() && new_size > 0 && numel % new_size == 0) {
+        if numel == new_size || (new_size > 0 && numel % new_size == 0) {
             if let Some(dim) = infer_dim {
                 res[dim] = numel / new_size;
             } 
@@ -391,12 +401,25 @@ trait UtilityOp: BasicManipulateOp {
 }
 
 /// View related operation
-pub trait ViewOp {
-    type Tensor: Tensor;
+pub trait ViewOp<T: Tensor> {
+    /// Return an original tensor before any view is applied.
+    /// If it is called on original tensor, it return itself.
+    fn original(self) -> T;
+    /// Create a narrower view of tensor based on given range.
+    /// The range end must be exclusive, e.g. `0..3`.
+    /// The inclusive range end is not support, e.g. `0..=2`.
+    /// Partial range isn't supported, e.g. `..3`, `2..` .
+    /// Full range isn't supported, e.g. `..`.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// tensor.narrow(&[0..2, 3..5 , 1..3])
+    /// ```
+    fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<T>, NarrowError>;
 
     /// Perform tensor squeeze. It'll flatten any dimension
     /// that have size 1 and return the new squeezed TensorView
-    fn squeeze(self) -> TensorView<Self::Tensor>;
+    fn squeeze(self) -> TensorView<T>;
     /// Narrow down a view as per new given bound.
     /// The size need to be smaller than current size.
     /// There's strict rule on when is it possible to create view.
@@ -404,9 +427,21 @@ pub trait ViewOp {
     /// See PyTorch document on [view](https://pytorch.org/docs/stable/tensors.html#torch.Tensor.view)
     /// for more detail.
     /// 
+    /// # Example
+    /// ```Rust
+    /// let tensor = FloatTensor::new_with_size_1d(20);
+    /// tensor.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    /// let view_1 = tensor.view(&[Some(2), None])?; // shape will be [2, 10]
+    /// // since TensorView implement deref into Tensor, we can subview it.
+    /// let view_2 = view_1.view(&[Some(5), None])?; // shape is now [5, 4]
+    /// // There is utility macro to help construct view shape like this
+    /// let view_3 = view_2.view(shape!([5, 2, -1]))?; // shape is now [5, 2, 2]
+    /// ```
+    /// 
     /// # Parameters
     /// - `bound: &[Option<(usize, usize)>]` - A slice contain tuple of (min, max) value
-    fn view(self, bound: &[Option<usize>]) -> Result<TensorView<Self::Tensor>, ViewError>;
+    fn view(self, bound: &[Option<usize>]) -> Result<TensorView<T>, ViewError>;
+
 }
 
 #[derive(Debug)]
@@ -425,6 +460,13 @@ pub enum SizeInferError {
 /// or view size exceed number of element.
 #[derive(Debug)]
 pub struct StrideComputeError {}
+
+/// Narrow operation fail.
+/// Potential cause is one of range end is out of bound
+#[derive(Debug)]
+pub struct NarrowError {
+    dim: usize
+}
 
 /// Cannot make a view from given sizes
 #[derive(Debug)]
@@ -657,10 +699,8 @@ impl<T> TensorView<T> where T: Tensor {
 }
 
 /// Simple data manipulation on the tensor in view.
-impl<T> BasicManipulateOp for TensorView<T> where T: Tensor {
+impl<T> BasicManipulateOp<<T as Tensor>::Storage> for TensorView<T> where T: Tensor {
     type Datum = <T as Tensor>::Datum;
-    type Storage = <T as Tensor>::Storage;
-    type Tensor = T;
 
     fn data(&self) -> &[Self::Datum] {
         self.view.data()
@@ -731,7 +771,7 @@ impl<T> BasicManipulateOp for TensorView<T> where T: Tensor {
     fn size(&self, dim: usize) -> usize {
         self.view.size(dim)
     }
-    fn storage(&mut self) -> &mut Option<Self::Storage> {
+    fn storage(&mut self) -> &mut Option<<T as Tensor>::Storage> {
         self.view.storage()
     }
     fn storage_offset(&self) -> usize {
@@ -750,16 +790,33 @@ impl<T> Deref for TensorView<T> where T: Tensor {
     }
 }
 
-impl<T> ViewOp for TensorView<T>
-where T: ViewOp<Tensor=T> + Tensor
+impl<T> ViewOp<T> for TensorView<T>
+where T: Tensor
 {
-    type Tensor = <T as ViewOp>::Tensor;
+    /// Return an original tensor before any view is applied.
+    fn original(self) -> T {
+        self.original
+    }
+
+    /// Perform narrow down the view. 
+    /// __Note:__ It'll save original tensor along
+    /// with new view. The original tensor is the tensor before
+    /// first view operation is perform.
+    fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<T>, NarrowError> {
+        Ok(
+            Self {
+                original: self.original,
+                view: self.view.narrow(bound)?.view
+            }
+        )
+    }
+
     /// Perform tensor squeeze. It'll flatten any dimension
     /// that have size 1 and return the new squeezed TensorView
     /// __Note:__ It'll save original tensor along
     /// with new view. The original tensor is the tensor before
     /// first view operation is perform.
-    fn squeeze(self) -> TensorView<Self::Tensor> {
+    fn squeeze(self) -> TensorView<T> {
         Self {
             original: self.original,
             view: self.view.squeeze().view 
@@ -768,7 +825,7 @@ where T: ViewOp<Tensor=T> + Tensor
 
     /// Perform sub-view on this view. The new sub-view will not store
     /// current view as original but use the original tensor as original.
-    fn view(self, sizes: &[Option<usize>]) -> Result<TensorView<Self::Tensor>, ViewError> {
+    fn view(self, sizes: &[Option<usize>]) -> Result<TensorView<T>, ViewError> {
         Ok(
             Self {
                 original: self.original,

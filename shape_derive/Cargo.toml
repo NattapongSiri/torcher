@@ -1,0 +1,18 @@
+[package]
+name = "shape_derive"
+version = "0.1.0"
+authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
+edition = "2018"
+license = "BSD-4-Clause"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro-hack = "0.5"
+proc-macro2 = "0.4"
+quote = "0.6"
+
+[dependencies.syn]
+version = "0.15"
+features = ["full"]

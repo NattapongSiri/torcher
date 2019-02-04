@@ -39,17 +39,57 @@
 //!     buffer.as_slice()
 //! });
 //! ```
+extern crate shape_derive;
 pub extern crate storage;
 pub extern crate tensor;
 
-use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor, Tensor};
+use proc_macro_hack::proc_macro_hack;
+use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor, TensorView};
+use tensor::{BasicManipulateOp, CreateOp, Tensor, ViewError};
 
-// import generated code from build script.
+// import tensor populate macros/functions that generated from build script.
 include!(concat!(env!("OUT_DIR"), "/pop_tensor.rs"));
+
+/// A macro that help create a &[Option<usize>] type.
+/// It attempt to blend both Rust style and PyTorch style tensor view syntax.
+/// In PyTorch view can be created by `tensor[2, 4, -1]` which mean view
+/// tensor with shape [2, 4, *] where * mean all remaining element.
+/// In Rust, index is typically usize which doesn't accept negative number.
+/// To workaround the issue, we need to wrap the index inside `Option` enum.
+/// It make viewing tensor a bit too verbose. For example, 
+/// `tensor.view([Some(2), Some(4), None])`
+/// This macro help make it compact by permit user to write
+/// `tensor.view(shape!([2, 4, -1]))`
+/// # Example
+/// ```Rust
+/// dbg!(shape!([2, 4, -1]));
+/// // print shape!([2, 4, -1]) = &[Some(2), Some(4), None]
+/// 
+/// // In fact, any negative number will yield None
+/// dbg!(shape!([3, 3, -3, 4, 2]));
+/// // print shape!([3, 3, -1, 4, 2]) = &[Some(3), Some(3), None, Some(4), Some(2)]
+/// ```
+#[proc_macro_hack]
+pub use shape_derive::shape;
+
+// /// Create a view of tensor base on given shape spec.
+// /// The size of shape can be created using helper macro name `shape!`.
+// /// It'll call view method on tensor then new_narrow method on each
+// /// dimension where range doesn't start with 0.
+// /// It range end need to be less than or equals to shape of given tensor.
+// pub fn view<'a, T>(tensor: T, shape: ComplexShape<'a>) -> Result<TensorView<T>, ViewError>
+//     where T: Tensor
+// {
+//     let DestructuredShape {start, end} = shape;
+//     let tv = tensor.view(end);
+//     let new_shape = tv.shape();
+// }
 
 #[cfg(test)]
 mod tests {
     use tensor::*;
+    use super::*;
+
     #[test]
     fn test_populate_fixed_char_tensor() {
         
@@ -179,4 +219,20 @@ mod tests {
 
         assert_eq!(tensor.data(), &[1i16, 2, 3, 4]);
     }
+
+    #[test]
+    fn test_shape() {
+        let s = shape!([1, 3, -1, 2]);
+        assert_eq!(s, &[Some(1), Some(3), None, Some(2)])
+    }
+
+    // #[test]
+    // fn test_view_simple() {
+    //     let ts = populate_tensor!(i32, 10, |(i, v)| {*v = i as i32});
+    //     let shape = shape!([0, 2, ..]);
+    //     let tv = view(ts, shape!([0, 2, ..])).unwrap();
+    //     let shape: &[usize] = &[0, 2, 5];
+    //     let stride: &[usize] = &[10, 5, 1];
+    //     assert_eq!(tv.shape(), (shape, stride));
+    // }
 }
