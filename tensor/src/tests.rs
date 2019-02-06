@@ -278,12 +278,18 @@ fn float_narrow_on() {
     let mut storage = FloatStorage::new_with_size(10);
     storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
 
+    // shape will be [[1, 2], [3, 4], [5, 6], [7, 8]]
     let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
-    let tv = ts.narrow_on(0, 1..3).unwrap();
-    assert_eq!(tv.shape().0, &[2, 2]);
+    // shape will be [[3, 4], [5, 6]]
+    let tv = ts.narrow_on(0, 1..3).unwrap()
+    // shape will be [[4], [6]]
+               .narrow_on(1, 1..2).unwrap();
+    assert_eq!(tv.shape().0, &[2, 1]);
+    let expected = [4f32, 6.0];
     tv.iter().enumerate().for_each(|(i, v)| {
-        assert_eq!(v, (i + 3) as f32);
+        assert_eq!(v, expected[i]);
     });
+    assert_eq!(tv.squeeze().shape().0, &[2usize]);
 }
 
 #[test]
