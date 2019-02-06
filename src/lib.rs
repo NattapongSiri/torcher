@@ -44,9 +44,8 @@ pub extern crate storage;
 pub extern crate tensor;
 
 use proc_macro_hack::proc_macro_hack;
-use core::ops::{Bound, Range, RangeBounds};
-use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor, TensorView};
-use tensor::{BasicManipulateOp, CreateOp, Tensor, ViewError};
+use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor};
+use tensor::{BasicManipulateOp, CreateOp};
 
 // import tensor populate macros/functions that generated from build script.
 include!(concat!(env!("OUT_DIR"), "/pop_tensor.rs"));
@@ -72,64 +71,6 @@ include!(concat!(env!("OUT_DIR"), "/pop_tensor.rs"));
 /// ```
 #[proc_macro_hack]
 pub use shape_derive::shape;
-
-// #[macro_export]
-// macro_rules! narrow {
-//     ($($v: expr),+; $tensor: expr) => {
-//         {
-//             $tensor.narrow(range_enumerate!(0usize, $tensor.shape().0, $($v),+).as_slice())
-//         }
-//     }
-// }
-
-// /// Utility macro to parse each range and repeatly call to to_range utility 
-// /// function to convert any kind of different range into single Range struct.
-// macro_rules! range_enumerate {
-//     ($e: expr, $sizes: expr, $v:expr) => {
-//         vec![to_range($v, $sizes[$e])]
-//     };
-//     ($e: expr, $sizes: expr, $v:expr, $($remain:expr),+) => {
-//         {
-//             let mut vec = vec![to_range($v, $sizes[$e])];
-//             vec.append(&mut range_enumerate!($e + 1usize, $sizes, $($remain),+));
-//             vec
-//         }
-//     };
-// }
-
-/// Utility function that accept a RangeBound instance and return
-/// a Range object.
-/// 
-/// If given range is RangFrom, or RangeFull, it'll use sizes
-/// to fill in the range end.
-fn to_range<R>(r: R, max: usize) -> Range<usize>
-where R: RangeBounds<usize>,
-{
-    Range {
-        start:  match r.start_bound() {
-                    Bound::Included(v) => {
-                        *v
-                    },
-                    Bound::Excluded(v) => {
-                        v + 1
-                    }
-                    Bound::Unbounded => {
-                        0
-                    }
-                },
-        end:    match r.end_bound() {
-                    Bound::Included(v) => {
-                        v + 1
-                    },
-                    Bound::Excluded(v) => {
-                        *v
-                    }
-                    Bound::Unbounded => {
-                        max
-                    }
-                }
-    }
-}
 
 #[cfg(test)]
 mod tests {
