@@ -7,4 +7,4 @@ license = "BSD-4-Clause"
 build = "build.rs"
 
 [dependencies]
-storage_derive = { path = "storage_derive" }
+storage_derive = { path = "storage_derive", version = "0.1" }

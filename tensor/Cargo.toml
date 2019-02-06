@@ -6,8 +6,8 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-common = { path = "../common" }
-storage = { path = "../storage" }
-tensor_derive = { path = "tensor_derive" }
+common = { path = "../common", version = "0.1.0" }
+storage = { path = "../storage", version = "0.1.0" }
+tensor_derive = { path = "tensor_derive", version = "0.1.0" }
 
 [build-dependencies]

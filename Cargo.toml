@@ -8,9 +8,9 @@ build = "build.rs"
 
 [dependencies]
 proc-macro-hack = "0.5"
-shape_derive = { path = "shape_derive" }
-storage = { path = "storage" }
-tensor = { path = "tensor" }
+shape_derive = { path = "shape_derive", version = "0.1"}
+storage = { path = "storage", version = "0.1"}
+tensor = { path = "tensor", version = "0.1"}
 
 [workspace]
 members = [
