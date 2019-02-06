@@ -13,10 +13,10 @@ fn implement_tensor_construction() {
         for tar in supported_types {
             f.write_all(format!("
                 ({ty}, $size: expr, $cb: expr) => (
-                    _generate_sized_{ty}_tensor($size, $cb)
+                    __generate_sized_{ty}_tensor($size, $cb)
                 );
                 ({ty}, $generator: expr) => (
-                    _generate_unsized_{ty}_tensor($generator)
+                    __generate_unsized_{ty}_tensor($generator)
                 );
             ", 
             ty=tar.1
@@ -31,7 +31,7 @@ fn implement_tensor_construction() {
             /// Perform tensor construction for data type {ty}. It'll create an empty 1d {ts}
             /// then populate it by call the callback function on each element of mutable data ref
             /// along with the current index of given data.
-            fn _generate_sized_{ty}_tensor(size: usize, cb: impl FnMut((usize, &mut {ty}))) -> {ts} {{
+            pub fn generate_sized_{ty}_tensor(size: usize, cb: impl FnMut((usize, &mut {ty}))) -> {ts} {{
                 let mut tensor = {ts}::new_with_size_1d(size);
                 tensor.data_mut().iter_mut().enumerate().for_each(cb);
                 tensor
@@ -39,7 +39,7 @@ fn implement_tensor_construction() {
 
             /// Perform data populate by using generator closure which expected to return a 
             /// slice of the {ty}. It then perform deep copy of each
-            fn _generate_unsized_{ty}_tensor<'a>(mut generator: impl FnMut() -> &'a [{ty}]) -> {ts} {{
+            pub fn generate_unsized_{ty}_tensor<'a>(mut generator: impl FnMut() -> &'a [{ty}]) -> {ts} {{
                 {ts}::from(generator())
             }}
             ",
