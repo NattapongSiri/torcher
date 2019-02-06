@@ -416,6 +416,9 @@ pub trait ViewOp<T: Tensor> {
     /// tensor.narrow(&[0..2, 3..5 , 1..3])
     /// ```
     fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<T>, NarrowError>;
+    /// Apply narrow on specific dimension and return a narrowed view on
+    /// given tensor along with the original tensor.
+    fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<T>, NarrowError>;
 
     /// Perform tensor squeeze. It'll flatten any dimension
     /// that have size 1 and return the new squeezed TensorView
@@ -807,6 +810,19 @@ where T: Tensor
             Self {
                 original: self.original,
                 view: self.view.narrow(bound)?.view
+            }
+        )
+    }
+
+    /// Perform narrow down the view on given dimension. 
+    /// __Note:__ It'll save original tensor along
+    /// with new view. The original tensor is the tensor before
+    /// first view operation is perform.
+    fn narrow_on(self, dim: usize, bound: Range<usize>) -> Result<TensorView<T>, NarrowError> {
+        Ok(
+            Self {
+                original: self.original,
+                view: self.view.narrow_on(dim, bound)?.view
             }
         )
     }

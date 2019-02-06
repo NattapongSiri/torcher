@@ -44,6 +44,7 @@ pub extern crate storage;
 pub extern crate tensor;
 
 use proc_macro_hack::proc_macro_hack;
+use core::ops::{Bound, Range, RangeBounds};
 use tensor::{ByteTensor, CharTensor, DoubleTensor, FloatTensor, IntTensor, LongTensor, ShortTensor, TensorView};
 use tensor::{BasicManipulateOp, CreateOp, Tensor, ViewError};
 
@@ -72,18 +73,63 @@ include!(concat!(env!("OUT_DIR"), "/pop_tensor.rs"));
 #[proc_macro_hack]
 pub use shape_derive::shape;
 
-// /// Create a view of tensor base on given shape spec.
-// /// The size of shape can be created using helper macro name `shape!`.
-// /// It'll call view method on tensor then new_narrow method on each
-// /// dimension where range doesn't start with 0.
-// /// It range end need to be less than or equals to shape of given tensor.
-// pub fn view<'a, T>(tensor: T, shape: ComplexShape<'a>) -> Result<TensorView<T>, ViewError>
-//     where T: Tensor
-// {
-//     let DestructuredShape {start, end} = shape;
-//     let tv = tensor.view(end);
-//     let new_shape = tv.shape();
+// #[macro_export]
+// macro_rules! narrow {
+//     ($($v: expr),+; $tensor: expr) => {
+//         {
+//             $tensor.narrow(range_enumerate!(0usize, $tensor.shape().0, $($v),+).as_slice())
+//         }
+//     }
 // }
+
+// /// Utility macro to parse each range and repeatly call to to_range utility 
+// /// function to convert any kind of different range into single Range struct.
+// macro_rules! range_enumerate {
+//     ($e: expr, $sizes: expr, $v:expr) => {
+//         vec![to_range($v, $sizes[$e])]
+//     };
+//     ($e: expr, $sizes: expr, $v:expr, $($remain:expr),+) => {
+//         {
+//             let mut vec = vec![to_range($v, $sizes[$e])];
+//             vec.append(&mut range_enumerate!($e + 1usize, $sizes, $($remain),+));
+//             vec
+//         }
+//     };
+// }
+
+/// Utility function that accept a RangeBound instance and return
+/// a Range object.
+/// 
+/// If given range is RangFrom, or RangeFull, it'll use sizes
+/// to fill in the range end.
+fn to_range<R>(r: R, max: usize) -> Range<usize>
+where R: RangeBounds<usize>,
+{
+    Range {
+        start:  match r.start_bound() {
+                    Bound::Included(v) => {
+                        *v
+                    },
+                    Bound::Excluded(v) => {
+                        v + 1
+                    }
+                    Bound::Unbounded => {
+                        0
+                    }
+                },
+        end:    match r.end_bound() {
+                    Bound::Included(v) => {
+                        v + 1
+                    },
+                    Bound::Excluded(v) => {
+                        *v
+                    }
+                    Bound::Unbounded => {
+                        max
+                    }
+                }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -225,14 +271,4 @@ mod tests {
         let s = shape!([1, 3, -1, 2]);
         assert_eq!(s, &[Some(1), Some(3), None, Some(2)])
     }
-
-    // #[test]
-    // fn test_view_simple() {
-    //     let ts = populate_tensor!(i32, 10, |(i, v)| {*v = i as i32});
-    //     let shape = shape!([0, 2, ..]);
-    //     let tv = view(ts, shape!([0, 2, ..])).unwrap();
-    //     let shape: &[usize] = &[0, 2, 5];
-    //     let stride: &[usize] = &[10, 5, 1];
-    //     assert_eq!(tv.shape(), (shape, stride));
-    // }
 }

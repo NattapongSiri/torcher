@@ -6,7 +6,8 @@ extern crate syn;
 use quote::quote;
 use proc_macro::TokenStream;
 use proc_macro_hack::proc_macro_hack;
-use syn::{Expr, ExprArray, ExprLit, ExprUnary, Lit, parse, UnOp};
+use syn::{bracketed, Expr, ExprArray, ExprIndex, ExprLit, ExprUnary, Lit, parse, parse_quote, RangeLimits, Token, UnOp};
+use syn::parse::{Parse, ParseStream};
 
 #[proc_macro_hack]
 pub fn shape(input: TokenStream) -> TokenStream {

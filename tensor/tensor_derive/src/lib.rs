@@ -1000,6 +1000,31 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     )
                 }
             }
+
+            fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<#ident>, NarrowError> {
+                let (cur_shape, _) = self.shape();
+                // let mut new_size = cur_shape.to_owned();
+                // let mut offset = self.storage_offset();
+
+                if new_bound.end <= cur_shape[dim] {
+                    // offset += new_bound.start * cur_stride[dim];
+                    // new_size[dim] = new_bound.end;
+                } else {
+                    return Err(NarrowError {dim: dim })
+                }
+
+                unsafe {
+                    // let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
+                    let tensor = #ident::new_narrow(&self, dim, new_bound.start, new_bound.end - new_bound.start);
+
+                    Ok(
+                        TensorView {
+                            original: self,
+                            view: tensor
+                        }
+                    )
+                }
+            }
             
             fn squeeze(self) -> TensorView<#ident> {
                 let mut new_ts = Self::new();

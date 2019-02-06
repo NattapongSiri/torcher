@@ -274,6 +274,19 @@ fn float_narrow() {
 }
 
 #[test]
+fn float_narrow_on() {
+    let mut storage = FloatStorage::new_with_size(10);
+    storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+
+    let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
+    let tv = ts.narrow_on(0, 1..3).unwrap();
+    assert_eq!(tv.shape().0, &[2, 2]);
+    tv.iter().enumerate().for_each(|(i, v)| {
+        assert_eq!(v, (i + 3) as f32);
+    });
+}
+
+#[test]
 fn float_new_narrow() {
     let mut storage = FloatStorage::new_with_size(10);
     storage[4] = 2f32;
