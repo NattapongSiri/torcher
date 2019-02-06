@@ -14,6 +14,12 @@ This project directly use Caffe2 library inside PyTorch to construct an underlyi
     [dependencies]
     torcher = { git="https://github.com/NattapongSiri/torcher" }
     ```
+5. Add build.rs file at the your project root and have at least a line with `println!(r"cargo:rustc-link-search=clib");` in your main function like below.
+    ```Rust
+    fn main() {
+        println!(r"cargo:rustc-link-search=clib");
+    }
+    ```
 
 # Use case
 - populate fixed size tensor 

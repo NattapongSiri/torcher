@@ -13,10 +13,12 @@ fn implement_tensor_construction() {
         for tar in supported_types {
             f.write_all(format!("
                 ({ty}, $size: expr, $cb: expr) => (
-                    generate_sized_{ty}_tensor($size, $cb)
+                    $crate::generate_sized_{ty}_tensor($size, $cb)
                 );
                 ({ty}, $generator: expr) => (
-                    generate_unsized_{ty}_tensor($generator)
+                    {{
+                        $crate::generate_unsized_{ty}_tensor($generator)
+                    }}
                 );
             ", 
             ty=tar.1
