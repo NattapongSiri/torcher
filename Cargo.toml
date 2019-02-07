@@ -10,6 +10,10 @@ license = "BSD-4-Clause"
 readme = "README.md"
 build = "build.rs"
 
+[features]
+default = []
+serde = ["storage/serde", "tensor/serde"]
+
 [dependencies]
 proc-macro-hack = "0.5"
 shape_derive = { path = "shape_derive", version = "0.1"}

@@ -278,6 +278,52 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
         }
+
+        #[cfg(feature = "serde")]
+        impl Serialize for #ident {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+                unsafe {
+                    let data = &*self._data;
+                    let mut state = serializer.serialize_seq(Some(data.len()))?;
+                    for v in data {
+                        state.serialize_element(v)?;
+                    };
+                    state.end()
+                }
+            }
+        }
+
+        impl<'de> Deserialize<'de> for #ident {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+                struct ElemVisitor;
+
+                impl<'de> Visitor<'de> for ElemVisitor {
+                    type Value = Vec<#t>;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        write!(formatter, "Expecting a sequence of type {}", stringify!(#t))
+                    }
+
+                    fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error> where A: SeqAccess<'de> {
+                        let mut v = match seq.size_hint() {
+                            Some(size) => Vec::with_capacity(size),
+                            None => Vec::new()
+                        };
+
+                        while let Some(s) = seq.next_element()? {
+                            v.push(s);
+                        }
+
+                        Ok(v)
+                    }
+                }
+
+                let elems = deserializer.deserialize_seq(ElemVisitor)?;
+                let mut store = #ident::new_with_size(elems.len());
+                store.iter_mut().zip(elems.iter()).for_each(|(s, e)| *s = *e);
+                Ok(store)
+            }
+        }
     };
 
     TokenStream::from(expanded)

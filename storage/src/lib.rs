@@ -38,6 +38,11 @@ extern crate storage_derive;
 use std::ops::{Deref, DerefMut};
 use storage_derive::{TorchStorage};
 
+#[cfg(feature="serde")]
+use std::fmt;
+use serde::ser::{Serialize, Serializer, SerializeSeq};
+use serde::de::{Deserialize, Deserializer, Visitor, SeqAccess};
+
 /// All functions operating on storage.
 /// The storage is the root source of data for every tensor.
 pub trait TensorStorage : Drop {

@@ -176,6 +176,27 @@ fn double_index_mut() {
     assert_eq!(31f64, ds[ds.len() - 1]);
 }
 
+#[cfg(feature="serde")]
+#[test]
+fn serialize() {
+    let mut storage = ByteStorage::new_with_size(4);
+    storage.fill(1);
+    assert_eq!(serde_yaml::to_string(&storage).unwrap(),
+"---
+- 1
+- 1
+- 1
+- 1");
+}
+
+#[cfg(feature="serde")]
+#[test]
+fn derialize() {
+    let yaml = serde_yaml::to_string(&[0u8, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
+    let storage : ByteStorage = serde_yaml::from_str(&yaml).unwrap();
+    storage.iter().enumerate().for_each(|(i, s)| assert_eq!(*s, i as u8));
+}
+
 #[test]
 #[ignore]
 fn bench_index() {
