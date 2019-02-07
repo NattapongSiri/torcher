@@ -7,18 +7,21 @@ This project directly use Caffe2 library inside PyTorch to construct an underlyi
 
 # Installation
 1. Install PyTorch 1.0 following this [guide](https://pytorch.org/get-started/locally/)
-2. Locate Caffe2 lib. It can be found where you install PyTorch. For example in virtualenv, it'll be found inside the directory `Lib/site-packages/torch/lib` inside where you create virtualenv.
-3. Set path to include those caffe2 lib found in previous step.
-4. Add this lib as your dependency in your cargo.toml. For example: 
+2. Locate Caffe2 lib. It can be found where you install PyTorch. For example in virtualenv in MS.Windows, it'll be found inside the directory `Lib/site-packages/torch/lib` inside directory where you create virtualenv. For Linux virtualenv example, it'll be in `lib/python3.7/site-packages/torch/lib` on virtualenv directory.
+3. Add this lib as your dependency in your cargo.toml. For example: 
     ```toml
     [dependencies]
     torcher = { git="https://github.com/NattapongSiri/torcher" }
     ```
-5. Create directory `clib` on your project root and copy following files from Caffe2 lib into it.
-   1. c10.dll
-   2. caffe2.dll
-   3. caffe2.lib
-   4. libiomp5md.dll
+4. Create directory `clib` on your project root.
+   - In MS. Windows, copy following files from Caffe2 lib into it.
+      1. c10.dll
+      2. caffe2.dll and caffe2.lib
+      3. libiomp5md.dll
+   - In Linux, copy only libcaffe2.so file
+5. Set environment variable to make linker know where to find the lib
+    - In MS. Windows, set `PATH` to include directory `clib`
+    - In Linux, set `LD_LIBRARY_PATH` to include directory `clib`
 
 # Use case
 - populate fixed size tensor 
