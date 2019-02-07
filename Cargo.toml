@@ -3,7 +3,11 @@ name = "torcher"
 version = "0.1.0"
 authors = ["Nattapong Sirilappanich <s.nattapong@gmail.com>"]
 edition = "2018"
+description = "Fast PyTorch tensor creation"
+keywords = ["PyTorch", "Torch", "Aten", "Caffe2"]
+categories = ["External FFI bindings", "Science"]
 license = "BSD-4-Clause"
+readme = "README.md"
 build = "build.rs"
 
 [dependencies]
