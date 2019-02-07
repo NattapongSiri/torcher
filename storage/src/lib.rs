@@ -40,7 +40,9 @@ use storage_derive::{TorchStorage};
 
 #[cfg(feature="serde")]
 use std::fmt;
+#[cfg(feature="serde")]
 use serde::ser::{Serialize, Serializer, SerializeSeq};
+#[cfg(feature="serde")]
 use serde::de::{Deserialize, Deserializer, Visitor, SeqAccess};
 
 /// All functions operating on storage.

@@ -293,6 +293,7 @@ pub fn TorchStorage(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
+        #[cfg(feature = "serde")]
         impl<'de> Deserialize<'de> for #ident {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
                 struct ElemVisitor;
