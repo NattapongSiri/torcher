@@ -477,6 +477,26 @@ fn float_resize_nd() {
     }
 }
 
+#[cfg(feature = "serde")]
+#[test]
+fn float_serialize() {
+    let mut tensor = ByteTensor::new_with_size_3d([2, 3, 4]);
+    tensor.iter_mut().for_each(|d| *d = 1);
+    assert_eq!(serde_yaml::to_string(&tensor).unwrap(),
+    "---\ndata:\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\n  - 1\noffset: 0\nsize:\n  - 2\n  - 3\n  - 4\nstride:\n  - 12\n  - 4\n  - 1");
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn float_derialize() {
+    let mut tensor = ByteTensor::new_with_size_3d([2, 3, 4]);
+    tensor.iter_mut().for_each(|d| *d = 1);
+    let serialized = serde_yaml::to_string(&tensor).unwrap();
+    let loaded: ByteTensor = serde_yaml::from_str(&serialized).unwrap();
+    
+    loaded.iter().for_each(|v| assert_eq!(v, 1));
+}
+
 #[test]
 fn float_set_0d() {
     let mut storage = FloatStorage::new_with_size(10);

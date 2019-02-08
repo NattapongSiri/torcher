@@ -965,6 +965,91 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
+        #[cfg(feature = "serde")]
+        impl<'de> Deserialize<'de> for #ident {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+                struct TS;
+                enum Fields {
+                    Data,
+                    Offset,
+                    Size,
+                    Stride
+                };
+
+                impl<'de> Deserialize<'de> for Fields {
+                    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+                        struct FieldsVisitor;
+
+                        impl<'de> Visitor<'de> for FieldsVisitor {
+                            type Value = Fields;
+
+                            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                                write!(formatter, "Cannot deserialize field name")
+                            }
+
+                            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E> where E: de::Error {
+                                match v {
+                                    "data" => Ok(Fields::Data),
+                                    "offset" => Ok(Fields::Offset),
+                                    "size" => Ok(Fields::Size),
+                                    "stride" => Ok(Fields::Stride),
+                                    _ => Err(de::Error::unknown_field(v, FIELDS))
+                                }
+                            }
+                        }
+
+                        deserializer.deserialize_identifier(FieldsVisitor)
+                    }
+                }
+
+                impl<'de> Visitor<'de> for TS {
+                    type Value = #ident;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        write!(formatter, "Cannot deserialize {} struct", stringify!(#ident))
+                    }
+
+                    fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error> where A: MapAccess<'de> {
+                        let mut store: Option<#store_ty_id> = None;
+                        let mut offset: Option<usize> = None;
+                        let mut size: Option<Vec<usize>> = None;
+                        let mut stride: Option<Vec<usize>> = None;
+
+                        while let Some(name) = map.next_key()? {
+                            match name {
+                                Fields::Data => store = Some(map.next_value()?),
+                                Fields::Offset => offset = Some(map.next_value()?),
+                                Fields::Size => size = Some(map.next_value()?),
+                                Fields::Stride => stride = Some(map.next_value()?)
+                            }
+                        }
+
+                        let store = store.ok_or(de::Error::missing_field("data"))?;
+                        let offset = offset.ok_or(de::Error::missing_field("offset"))?;
+                        let size = size.ok_or(de::Error::missing_field("size"))?;
+                        let stride = stride.ok_or(de::Error::missing_field("stride"))?;
+                        
+                        Ok(#ident::new_with_storage_nd(store, offset, &size, &stride))
+                    }
+                }
+
+                const FIELDS: &'static [&str] = &["data", "offset", "size", "stride"];
+                deserializer.deserialize_struct(stringify!(#ident), FIELDS, TS)
+            }
+        }
+
+        #[cfg(feature = "serde")]
+        impl Serialize for #ident {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+                let mut state = serializer.serialize_struct(stringify!(#ident), 4)?;
+                state.serialize_field("data", &self.storage)?;
+                state.serialize_field("offset", &self.storage_offset())?;
+                state.serialize_field("size", &self.size)?;
+                state.serialize_field("stride", &self.stride)?;
+                state.end()
+            }
+        }
+
         impl UtilityOp<#store_ty_id> for #ident {}
 
         impl ViewOp<#ident> for #ident {

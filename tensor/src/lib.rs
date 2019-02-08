@@ -59,6 +59,15 @@ use std::os::raw::{c_int};
 use storage::{ByteStorage, CharStorage, DoubleStorage, FloatStorage, IntStorage, LongStorage, ShortStorage, TensorStorage};
 use tensor_derive::TorchTensor;
 
+#[cfg(feature="serde")]
+use serde::ser::{Serialize, Serializer, SerializeStruct};
+#[cfg(feature="serde")]
+use serde::de;
+#[cfg(feature="serde")]
+use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
+#[cfg(feature="serde")]
+use std::fmt;
+
 /// Basic tensor operation for simple data manipulation.
 /// This includes data read/write operation and tensor shape
 /// related operation.
