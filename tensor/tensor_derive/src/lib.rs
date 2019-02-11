@@ -1158,6 +1158,30 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }
                 }
             }
+            
+            unsafe fn unsafe_squeeze(&self) -> #ident {
+                let mut new_ts = Self::new();
+                #squeeze_fn(new_ts.tensor, self.tensor);
+                let dim = #dim_fn(new_ts.tensor);
+                let mut storage_bound = 0;
+
+                for i in 0..(dim - 1) {
+                    new_ts.size.push(#size_fn(new_ts.tensor, i as c_int) as usize);
+                    new_ts.stride.push(#stride_fn(new_ts.tensor, i as c_int) as usize);
+                    let cur_bound = new_ts.size[i as usize] * new_ts.stride[i as usize];
+
+                    if cur_bound > storage_bound {
+                        storage_bound = cur_bound;
+                    }
+                }
+
+                new_ts.size.push(#size_fn(new_ts.tensor, dim - 1 as c_int) as usize);
+                new_ts.stride.push(#stride_fn(new_ts.tensor, dim - 1 as c_int) as usize);
+                storage_bound += new_ts.size[dim as usize - 1];
+                new_ts.storage_bound = storage_bound;
+                new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), storage_bound);
+                new_ts
+            }
 
             fn view(self, sizes: &[Option<usize>]) -> Result<TensorView<#ident>, ViewError> {
                 unsafe {

@@ -629,6 +629,21 @@ fn float_squeeze() {
 }
 
 #[test]
+fn float_unsafe_squeeze() {
+    let mut storage = FloatStorage::new_with_size(10);
+    for i in 0..storage.len() {
+        storage[i] = i as f32;
+    }
+    let ts = FloatTensor::new_with_storage_4d(storage, 2, [2, 1, 2, 1], [4, 2, 1]);
+
+    unsafe {
+        let squeezed = ts.unsafe_squeeze();
+
+        assert_eq!(&[2usize, 2], squeezed.shape().0);
+    }
+}
+
+#[test]
 fn float_view() {
     let mut ts = FloatTensor::new_with_size_1d(10);
     ts.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
