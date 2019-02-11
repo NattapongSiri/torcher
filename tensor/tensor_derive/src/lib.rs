@@ -1083,6 +1083,27 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 }
             }
 
+            unsafe fn unsafe_narrow(&self, bound: &[Range<usize>]) -> #ident {
+                let (cur_shape, cur_stride) = self.shape();
+                let mut new_size = Vec::with_capacity(bound.len());
+                let mut offset = self.storage_offset();
+
+                // check every dimension whether the range is in boundary
+                for (((dim, u_bound), cur_stride), new_bound) in cur_shape.iter().enumerate().zip(cur_stride.iter()).zip(bound.iter()) {
+                    if *u_bound < new_bound.end {
+                        panic!("Size incompatible.")
+                    } else {
+                        // calculate new size and new storage offset
+                        new_size.push(new_bound.end - new_bound.start);
+                        offset += new_bound.start * *cur_stride;
+                    }
+                }
+
+                let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
+                #ident::new_with_storage_nd(storage, offset, &new_size, &cur_stride)
+                
+            }
+
             fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<#ident>, NarrowError> {
                 let (cur_shape, _) = self.shape();
                 // let mut new_size = cur_shape.to_owned();

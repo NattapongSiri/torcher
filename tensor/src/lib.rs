@@ -431,6 +431,11 @@ pub trait ViewOp<T: Tensor> {
     /// tensor.narrow(&[0..2, 3..5 , 1..3])
     /// ```
     fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<T>, NarrowError>;
+    /// Unsafely create a narrowed tensor by reusing underlying
+    /// storage through raw pointer.
+    /// 
+    /// If narrow fail, it panic instead of return Err
+    unsafe fn unsafe_narrow(&self, bound: &[Range<usize>]) -> T;
     /// Apply narrow on specific dimension and return a narrowed view on
     /// given tensor along with the original tensor.
     fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<T>, NarrowError>;
@@ -835,6 +840,10 @@ where T: Tensor
                 view: self.view.narrow(bound)?.view
             }
         )
+    }
+
+    unsafe fn unsafe_narrow(&self, bound: &[Range<usize>]) -> T {
+        self.view.unsafe_narrow(bound)
     }
 
     /// Perform narrow down the view on given dimension. 

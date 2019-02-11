@@ -274,6 +274,21 @@ fn float_narrow() {
 }
 
 #[test]
+fn float_unsafe_narrow() {
+    let mut storage = FloatStorage::new_with_size(10);
+    storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+
+    let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
+    unsafe {
+        let tv = ts.unsafe_narrow(&[1..4, 0..2]);
+        
+        assert_eq!("torch.xTensor of size 3x2", tv.desc());
+        let expected = &[3f32, 4.0, 5.0, 6.0, 7.0, 8.0];
+        tv.iter().zip(expected.iter()).for_each(|(v, e)| assert_eq!(v, *e));
+    }
+}
+
+#[test]
 fn float_narrow_on() {
     let mut storage = FloatStorage::new_with_size(10);
     storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
