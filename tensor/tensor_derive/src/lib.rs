@@ -192,17 +192,6 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
         }
 
         impl #ident {
-            /// Convenience method that return iterator of
-            /// current object
-            fn iter(&self) -> TensorIterator<#t> {
-                self.into_iter()
-            }
-
-            /// Convenience method that return mutable iterator of
-            /// current object
-            fn iter_mut(&mut self) -> TensorIterMut<#t> {
-                self.into_iter()
-            }
 
             /// Get short description of storage.
             /// This includes name of storage, size, and
@@ -776,6 +765,14 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 unsafe {
                     #get_4d_fn(self.tensor, i[0] as i64, i[1] as i64, i[2] as i64, i[3] as i64)
                 }
+            }
+            
+            fn iter(&self) -> TensorIterator<#t> {
+                self.into_iter()
+            }
+            
+            fn iter_mut(&mut self) -> TensorIterMut<#t> {
+                self.into_iter()
             }
 
             fn is_contiguous(&self) -> bool {

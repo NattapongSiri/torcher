@@ -115,6 +115,12 @@ pub trait BasicManipulateOp<S: TensorStorage> {
     fn get_4d(&self, i: [usize; 4]) -> Self::Datum;
     /// Check if current tensor is contiguous
     fn is_contiguous(&self) -> bool;
+    /// Convenient method to get an iterator of tensor according
+    /// to size and stride
+    fn iter(&self) -> TensorIterator<Self::Datum>;
+    /// Convenient method to get a mutable iterator of tensor according
+    /// to size and stride
+    fn iter_mut(&mut self) -> TensorIterMut<Self::Datum>;
     /// Total number of element this tensor is representing.
     /// It may not be equals to number return by `data().len()`
     fn numel(&self) -> usize;
@@ -288,7 +294,7 @@ pub trait CreateOp<S: TensorStorage> {
 pub trait Tensor: 
 BasicManipulateOp<<Self as Tensor>::Storage, Datum=<Self as Tensor>::Datum> + 
 CreateOp<<Self as Tensor>::Storage, Datum=<Self as Tensor>::Datum> +
-ViewOp<Self>
+ViewOp<Self> 
 where Self: Sized
 {
     type Datum;
@@ -711,7 +717,9 @@ impl<T> TensorView<T> where T: Tensor {
 }
 
 /// Simple data manipulation on the tensor in view.
-impl<T> BasicManipulateOp<<T as Tensor>::Storage> for TensorView<T> where T: Tensor {
+impl<T> BasicManipulateOp<<T as Tensor>::Storage> for TensorView<T> 
+where T: Tensor,
+{
     type Datum = <T as Tensor>::Datum;
 
     fn data(&self) -> &[Self::Datum] {
@@ -743,6 +751,12 @@ impl<T> BasicManipulateOp<<T as Tensor>::Storage> for TensorView<T> where T: Ten
     }
     fn is_contiguous(&self) -> bool {
         self.view.is_contiguous()
+    }
+    fn iter(&self) -> TensorIterator<Self::Datum> {
+        self.view.iter()
+    }
+    fn iter_mut(&mut self) -> TensorIterMut<Self::Datum> {
+        self.view.iter_mut()
     }
     fn numel(&self) -> usize {
         self.view.numel()
