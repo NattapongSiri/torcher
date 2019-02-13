@@ -8,9 +8,19 @@ build = "build.rs"
 [dependencies]
 common = { path = "../common", version = "0.1.0" }
 storage = { path = "../storage", version = "0.1.0" }
-tensor_derive = { path = "tensor_derive", version = "0.1.0" }
 
 serde = { version = "1.0", optional = true}
 
+[dependencies.tensor_derive]
+path = "tensor_derive"
+version = "0.1.0"
+default-features = false
+
 [dev-dependencies]
 serde_yaml = "0.8"
+
+[features]
+default = ["unsafe"]
+safe = ["tensor_derive/safe"]
+threadsafe = ["tensor_derive/threadsafe"]
+unsafe = ["tensor_derive/unsafe"]

@@ -44,8 +44,10 @@
 //! 
 //! # Safety
 //! All unsafe operation create new tensor instance but reuse existing
-//! storage. If one of tensor mutate data, it'll also mutate all other
-//! tensor's data.
+//! storage by raw pointer. If one of tensor mutate data, it'll also
+//! mutate all other tensor's data. It requires that only one
+//! tensor responsible for dropping storage. Failure to do so will
+//! result in undefined behavior.
 extern crate common;
 extern crate storage;
 extern crate tensor_derive;
@@ -68,6 +70,11 @@ use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
 #[cfg(feature="serde")]
 use std::fmt;
 
+#[cfg(feature = "safe")]
+use std::cell::RefCell;
+#[cfg(feature = "safe")]
+use std::rc::Rc;
+
 /// Basic tensor operation for simple data manipulation.
 /// This includes data read/write operation and tensor shape
 /// related operation.
@@ -85,6 +92,7 @@ pub trait BasicManipulateOp<S: TensorStorage> {
     /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
     /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
     /// ```
+    #[cfg(feature = "unsafe")]
     fn data(&self) -> &[Self::Datum];
     /// Return a mutable slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
@@ -97,6 +105,7 @@ pub trait BasicManipulateOp<S: TensorStorage> {
     /// let mut tensor = FloatTensor::new_with_storage_3d(storage, 2, [3, 2, 2], [2, 1]);
     /// dbg!(tensor.data().len()); // print tensor.data().len() = 7
     /// ```
+    #[cfg(feature = "unsafe")]
     fn data_mut(&mut self) -> &mut [Self::Datum];
     /// Just a wrapper to Caffe2 function.
     /// It currently only print size of tensor.
@@ -182,7 +191,16 @@ pub trait BasicManipulateOp<S: TensorStorage> {
     fn size(&self, dim: usize) -> usize;
     /// Return underlying storage.
     /// If it's empty tensor, it may be None
+    #[cfg(feature = "unsafe")]
     fn storage(&mut self) -> &mut Option<S>;
+    /// Return underlying storage.
+    /// If it's empty tensor, it may be None
+    #[cfg(feature = "safe")]
+    fn storage(&mut self) -> &mut Option<Rc<RefCell<S>>>;
+    /// Return underlying storage.
+    /// If it's empty tensor, it may be None
+    #[cfg(feature = "threadsafe")]
+    fn storage(&mut self) -> &mut Option<Arc<RwLock<S>>>;
     /// Return storage offset of this tensor
     fn storage_offset(&self) -> usize;
     /// Return stride of given dimension of this tensor
@@ -190,6 +208,7 @@ pub trait BasicManipulateOp<S: TensorStorage> {
 }
 
 /// Tensor create operation.
+#[cfg(feature = "unsafe")]
 pub trait CreateOp<S: TensorStorage> {
     type Datum;
 
@@ -287,6 +306,273 @@ pub trait CreateOp<S: TensorStorage> {
     /// Caffe2 tensors are mark with forget.
     /// There should be one and only one tensor that doesn't forget
     /// it underlying Caffe2 tensor.
+    #[cfg(feature = "unsafe")]
+    unsafe fn forget(self) -> Self;
+}
+/// Tensor create operation.
+#[cfg(feature = "safe")]
+pub trait CreateOp<S: TensorStorage> {
+    type Datum;
+
+    /// Construct an empty tensor
+    fn new() -> Self;
+    /// Always return a new deep clone tensor with contiguous storage according to current size.
+    /// In Python, it'll return the same Tensor if it's already contiguous.
+    /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
+    /// to check first if it's already contiguous.
+    fn new_contiguous(&self) -> Self;
+    /// Create shallow clone of Tensor that share the same storage as this tensor.
+    /// This function always success unlike the same function provided by
+    /// PyTorch counterpart. If underlying storage doesn't support such operation,
+    /// it'll be undefined behavior.
+    /// In PyTorch, if the storage doesn't support this operation, it'll raise
+    /// an Exception asking user to call contiguous.
+    /// See PyTorch documentation on narrow/view of tensor for more detail.
+    fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
+    /// ???
+    fn new_select(&self, dim: usize, i: usize) -> Self;
+    /// Transpose between the two dimension and return a tranposed tensor.
+    fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
+    fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
+    fn new_with_storage_1d(store: Rc<RefCell<S>>, offset: usize, size: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    fn new_with_storage_2d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 2], stride: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    fn new_with_storage_3d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    fn new_with_storage_4d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    fn new_with_storage_nd(store: Rc<RefCell<S>>, offset: usize, size: &[usize], stride: &[usize]) -> Self;
+    /// Create new empty 1d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_1d(size: usize) -> Self;
+    /// Create new empty 2d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_2d(size: [usize; 2]) -> Self;
+    /// Create new empty 3d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_3d(size: [usize; 3]) -> Self;
+    /// Create new empty 4d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_4d(size: [usize; 4]) -> Self;
+}
+/// Tensor create operation.
+#[cfg(feature = "threadsafe")]
+pub trait CreateOp<S: TensorStorage> {
+    type Datum;
+
+    /// Construct an empty tensor
+    fn new() -> Self;
+    /// Always return a new deep clone tensor with contiguous storage according to current size.
+    /// In Python, it'll return the same Tensor if it's already contiguous.
+    /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
+    /// to check first if it's already contiguous.
+    fn new_contiguous(&self) -> Self;
+    /// Create shallow clone of Tensor that share the same storage as this tensor.
+    /// This function always success unlike the same function provided by
+    /// PyTorch counterpart. If underlying storage doesn't support such operation,
+    /// it'll be undefined behavior.
+    /// In PyTorch, if the storage doesn't support this operation, it'll raise
+    /// an Exception asking user to call contiguous.
+    /// See PyTorch documentation on narrow/view of tensor for more detail.
+    fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
+    /// Create shallow clone of Tensor that share the same storage as this tensor.
+    /// This function always success unlike the same function provided by
+    /// PyTorch counterpart. If underlying storage doesn't support such operation,
+    /// it'll be undefined behavior.
+    /// In PyTorch, if the storage doesn't support this operation, it'll raise
+    /// an Exception asking user to call contiguous.
+    /// See PyTorch documentation on narrow/view of tensor for more detail.
+    #[cfg(feature = "threadsafe")]
+    fn new_narrow(&self, dim: usize, i: usize, size: usize) -> Self;
+    /// ???
+    /// 
+    /// # Safety
+    /// It's unsafe because the new tensor share the underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
+    #[cfg(feature = "unsafe")]
+    unsafe fn new_select(&self, dim: usize, i: usize) -> Self;
+    /// ???
+    #[cfg(feature = "safe")]
+    fn new_select(&self, dim: usize, i: usize) -> Self;
+    /// ???
+    #[cfg(feature = "threadsafe")]
+    fn new_select(&self, dim: usize, i: usize) -> Self;
+    /// Transpose between the two dimension and return a tranposed tensor.
+    /// 
+    /// # Safety
+    /// The new tensor share the underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
+    #[cfg(feature = "unsafe")]
+    unsafe fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
+    /// Transpose between the two dimension and return a tranposed tensor.
+    #[cfg(feature = "safe")]
+    fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
+    /// Transpose between the two dimension and return a tranposed tensor.
+    #[cfg(feature = "threadsafe")]
+    fn new_transpose(&self, dim_1: usize, dim_2: usize) -> Self;
+    /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
+    /// and repeatly fill in the value with value copy from given dimension.
+    /// The new dimension will have size according to specified size.
+    /// The original dimension will be shrunk to the original ((dimension - size) / step) + 1
+    /// 
+    /// # Safety
+    /// New tensor share underlying storage with this tensor.
+    /// The new tensor will never free underlying storage.
+    #[cfg(feature = "unsafe")]
+    unsafe fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
+    /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
+    /// and repeatly fill in the value with value copy from given dimension.
+    /// The new dimension will have size according to specified size.
+    /// The original dimension will be shrunk to the original ((dimension - size) / step) + 1
+    #[cfg(feature = "safe")]
+    fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
+    /// Similar to PyTorch unfold, it'll append the new dimension to this tensor
+    /// and repeatly fill in the value with value copy from given dimension.
+    /// The new dimension will have size according to specified size.
+    /// The original dimension will be shrunk to the original ((dimension - size) / step) + 1
+    #[cfg(feature = "threadsafe")]
+    fn new_unfold(&self, dim: usize, size: usize, step: usize) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free when this tensor is drop
+    #[cfg(feature = "unsafe")]
+    fn new_with_storage_1d(store: S, offset: usize, size: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "safe")]
+    fn new_with_storage_1d(store: Rc<RefCell<S>>, offset: usize, size: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "threadsafe")]
+    fn new_with_storage_1d(store: Arc<RwLock<S>>, offset: usize, size: usize) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free when this tensor is drop
+    #[cfg(feature = "unsafe")]
+    fn new_with_storage_2d(store: S, offset: usize, size: [usize; 2], stride: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "safe")]
+    fn new_with_storage_2d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 2], stride: usize) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "threadsafe")]
+    fn new_with_storage_2d(store: Arc<RwLock<S>>, offset: usize, size: [usize; 2], stride: usize) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free when this tensor is drop
+    #[cfg(feature = "unsafe")]
+    fn new_with_storage_3d(store: S, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "safe")]
+    fn new_with_storage_3d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "threadsafe")]
+    fn new_with_storage_3d(store: Arc<RwLock<S>>, offset: usize, size: [usize; 3], stride: [usize; 2]) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free when this tensor is drop
+    #[cfg(feature = "unsafe")]
+    fn new_with_storage_4d(store: S, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "safe")]
+    fn new_with_storage_4d(store: Rc<RefCell<S>>, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "threadsafe")]
+    fn new_with_storage_4d(store: Arc<RwLock<S>>, offset: usize, size: [usize; 4], stride: [usize; 3]) -> Self;
+    /// Consume storage and associate it with new tensor.
+    /// It map directly with Caffe2 function that responsible to do the similar task.
+    /// 
+    /// The underlying storage will be free when this tensor is drop
+    #[cfg(feature = "unsafe")]
+    fn new_with_storage_nd(store: S, offset: usize, size: &[usize], stride: &[usize]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "safe")]
+    fn new_with_storage_nd(store: Rc<RefCell<S>>, offset: usize, size: &[usize], stride: &[usize]) -> Self;
+    /// Create new tensor from shared storage.
+    /// 
+    /// The underlying storage will be free when last tensor that use
+    /// shared storage is drop
+    #[cfg(feature = "threadsafe")]
+    fn new_with_storage_nd(store: Arc<RwLock<S>>, offset: usize, size: &[usize], stride: &[usize]) -> Self;
+    /// Create new empty 1d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_1d(size: usize) -> Self;
+    /// Create new empty 2d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_2d(size: [usize; 2]) -> Self;
+    /// Create new empty 3d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_3d(size: [usize; 3]) -> Self;
+    /// Create new empty 4d tensor with contiguous stride.
+    /// 
+    /// The underlying storage will always automatically free by
+    /// Caffe2 lib
+    fn new_with_size_4d(size: [usize; 4]) -> Self;
+
+    /// Leak this tensor. It'll not clean up memory occupy by this
+    /// tensor when it goes out of scope.
+    /// 
+    /// # Safety
+    /// It cause memory leak if all instant that use underlying
+    /// Caffe2 tensors are mark with forget.
+    /// There should be one and only one tensor that doesn't forget
+    /// it underlying Caffe2 tensor.
+    #[cfg(feature = "unsafe")]
     unsafe fn forget(self) -> Self;
 }
 
@@ -419,6 +705,7 @@ where S: TensorStorage
 pub trait ViewOp<T: Tensor> {
     /// Return an original tensor before any view is applied.
     /// If it is called on original tensor, it return itself.
+    #[cfg(feature = "unsafe")]
     fn original(self) -> T;
     /// Create a narrower view of tensor based on given range.
     /// The range end must be exclusive, e.g. `0..3`.
@@ -430,22 +717,77 @@ pub trait ViewOp<T: Tensor> {
     /// ```Rust
     /// tensor.narrow(&[0..2, 3..5 , 1..3])
     /// ```
+    #[cfg(feature = "unsafe")]
     fn narrow(self, bound: &[Range<usize>]) -> Result<TensorView<T>, NarrowError>;
+    /// Create a narrower view of tensor based on given range.
+    /// The range end must be exclusive, e.g. `0..3`.
+    /// The inclusive range end is not support, e.g. `0..=2`.
+    /// Partial range isn't supported, e.g. `..3`, `2..` .
+    /// Full range isn't supported, e.g. `..`.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// tensor.narrow(&[0..2, 3..5 , 1..3])
+    /// ```
+    /// Create a narrower view of tensor based on given range.
+    /// The range end must be exclusive, e.g. `0..3`.
+    /// The inclusive range end is not support, e.g. `0..=2`.
+    /// Partial range isn't supported, e.g. `..3`, `2..` .
+    /// Full range isn't supported, e.g. `..`.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// tensor.narrow(&[0..2, 3..5 , 1..3])
+    /// ```
+    #[cfg(feature = "safe")]
+    fn narrow(&self, bound: &[Range<usize>]) -> Result<T, NarrowError>;
+    /// Create a narrower view of tensor based on given range.
+    /// The range end must be exclusive, e.g. `0..3`.
+    /// The inclusive range end is not support, e.g. `0..=2`.
+    /// Partial range isn't supported, e.g. `..3`, `2..` .
+    /// Full range isn't supported, e.g. `..`.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// tensor.narrow(&[0..2, 3..5 , 1..3])
+    /// ```
+    #[cfg(feature = "threadsafe")]
+    fn narrow(&self, bound: &[Range<usize>]) -> Result<T, NarrowError>;
     /// Unsafely create a narrowed tensor by reusing underlying
     /// storage through raw pointer.
     /// 
     /// If narrow fail, it panic instead of return Err
+    #[cfg(feature = "unsafe")]
     unsafe fn unsafe_narrow(&self, bound: &[Range<usize>]) -> T;
     /// Apply narrow on specific dimension and return a narrowed view on
     /// given tensor along with the original tensor.
+    #[cfg(feature = "unsafe")]
     fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<T>, NarrowError>;
+    /// Apply narrow on specific dimension and return a narrowed view on
+    /// given tensor along with the original tensor.
+    #[cfg(feature = "safe")]
+    fn narrow_on(&self, dim: usize, new_bound: Range<usize>) -> Result<T, NarrowError>;
+    /// Apply narrow on specific dimension and return a narrowed view on
+    /// given tensor along with the original tensor.
+    #[cfg(feature = "threadsafe")]
+    fn narrow_on(&self, dim: usize, new_bound: Range<usize>) -> Result<T, NarrowError>;
 
     /// Perform tensor squeeze. It'll flatten any dimension
     /// that have size 1 and return the new squeezed TensorView
+    #[cfg(feature = "unsafe")]
     fn squeeze(self) -> TensorView<T>;
+    /// Perform tensor squeeze. It'll flatten any dimension
+    /// that have size 1 and return the new squeezed TensorView
+    #[cfg(feature = "safe")]
+    fn squeeze(&self) -> T;
+    /// Perform tensor squeeze. It'll flatten any dimension
+    /// that have size 1 and return the new squeezed TensorView
+    #[cfg(feature = "threadsafe")]
+    fn squeeze(&self) -> T;
     /// Perform unsafe tensor squeeze.
     /// It is unsafe because it use raw pointer to create
     /// a squeezed tensor.
+    #[cfg(feature = "unsafe")]
     unsafe fn unsafe_squeeze(&self) -> T;
     /// Narrow down a view as per new given bound.
     /// The size need to be smaller than current size.
@@ -467,7 +809,52 @@ pub trait ViewOp<T: Tensor> {
     /// 
     /// # Parameters
     /// - `bound: &[Option<(usize, usize)>]` - A slice contain tuple of (min, max) value
+    #[cfg(feature = "unsafe")]
     fn view(self, bound: &[Option<usize>]) -> Result<TensorView<T>, ViewError>;
+    /// Narrow down a view as per new given bound.
+    /// The size need to be smaller than current size.
+    /// There's strict rule on when is it possible to create view.
+    /// Simplest case is if tensor is contiguous, it is possible to create view.
+    /// See PyTorch document on [view](https://pytorch.org/docs/stable/tensors.html#torch.Tensor.view)
+    /// for more detail.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// let tensor = FloatTensor::new_with_size_1d(20);
+    /// tensor.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    /// let view_1 = tensor.view(&[Some(2), None])?; // shape will be [2, 10]
+    /// // since TensorView implement deref into Tensor, we can subview it.
+    /// let view_2 = view_1.view(&[Some(5), None])?; // shape is now [5, 4]
+    /// // There is utility macro to help construct view shape like this
+    /// let view_3 = view_2.view(shape!([5, 2, -1]))?; // shape is now [5, 2, 2]
+    /// ```
+    /// 
+    /// # Parameters
+    /// - `bound: &[Option<(usize, usize)>]` - A slice contain tuple of (min, max) value
+    #[cfg(feature = "safe")]
+    fn view(&self, bound: &[Option<usize>]) -> Result<T, ViewError>;
+    /// Narrow down a view as per new given bound.
+    /// The size need to be smaller than current size.
+    /// There's strict rule on when is it possible to create view.
+    /// Simplest case is if tensor is contiguous, it is possible to create view.
+    /// See PyTorch document on [view](https://pytorch.org/docs/stable/tensors.html#torch.Tensor.view)
+    /// for more detail.
+    /// 
+    /// # Example
+    /// ```Rust
+    /// let tensor = FloatTensor::new_with_size_1d(20);
+    /// tensor.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    /// let view_1 = tensor.view(&[Some(2), None])?; // shape will be [2, 10]
+    /// // since TensorView implement deref into Tensor, we can subview it.
+    /// let view_2 = view_1.view(&[Some(5), None])?; // shape is now [5, 4]
+    /// // There is utility macro to help construct view shape like this
+    /// let view_3 = view_2.view(shape!([5, 2, -1]))?; // shape is now [5, 2, 2]
+    /// ```
+    /// 
+    /// # Parameters
+    /// - `bound: &[Option<(usize, usize)>]` - A slice contain tuple of (min, max) value
+    #[cfg(feature = "threadsafe")]
+    fn view(&self, bound: &[Option<usize>]) -> Result<T, ViewError>;
 
 }
 
@@ -713,11 +1100,13 @@ impl<'a, T> Iterator for TensorIterMut<'a, T> {
 
 /// A view wrapped Tensor. It provide safety abstraction when
 /// viewing tensor. 
+#[cfg(feature = "unsafe")]
 pub struct TensorView<T> where T: Tensor {
     original: T,
     view: T
 }
 
+#[cfg(feature = "unsafe")]
 impl<T> TensorView<T> where T: Tensor {
     /// Consume the view and return the original tensor
     pub fn original(self) -> T {
@@ -726,6 +1115,7 @@ impl<T> TensorView<T> where T: Tensor {
 }
 
 /// Simple data manipulation on the tensor in view.
+#[cfg(feature = "unsafe")]
 impl<T> BasicManipulateOp<<T as Tensor>::Storage> for TensorView<T> 
 where T: Tensor,
 {
@@ -817,6 +1207,7 @@ where T: Tensor,
     }
 }
 
+#[cfg(feature = "unsafe")]
 impl<T> Deref for TensorView<T> where T: Tensor {
     type Target=T;
 
@@ -825,6 +1216,7 @@ impl<T> Deref for TensorView<T> where T: Tensor {
     }
 }
 
+#[cfg(feature = "unsafe")]
 impl<T> ViewOp<T> for TensorView<T>
 where T: Tensor
 {

@@ -11,14 +11,21 @@ readme = "README.md"
 build = "build.rs"
 
 [features]
-default = []
+default = ["unsafe"]
+safe = ["tensor/safe"]
 serde = ["storage/serde", "tensor/serde"]
+threadsafe = ["tensor/threadsafe"]
+unsafe = ["tensor/unsafe"]
 
 [dependencies]
 proc-macro-hack = "0.5"
 shape_derive = { path = "shape_derive", version = "0.1"}
 storage = { path = "storage", version = "0.1"}
-tensor = { path = "tensor", version = "0.1"}
+
+[dependencies.tensor]
+path = "tensor"
+version = "0.1"
+default-features = false
 
 [workspace]
 members = [
