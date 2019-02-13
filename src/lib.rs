@@ -93,7 +93,7 @@ pub use shape_derive::shape;
 #[macro_export]
 macro_rules! get {
     ($($i: expr),+; $tensor: expr) => (
-        $tensor[__idx!(0usize, $($i),+; $tensor.shape().1)]
+        $tensor[$crate::__idx!(0usize, $($i),+; $tensor.shape().1)]
     );
 }
 
@@ -119,19 +119,20 @@ macro_rules! get {
 macro_rules! set {
     ($($i: expr),+; $tensor: expr; $val: expr) => (
         {
-            let idx = __idx!(0usize, $($i),+; $tensor.shape().1);
+            let idx = $crate::__idx!(0usize, $($i),+; $tensor.shape().1);
             $tensor.data_mut()[idx] = $val;
         }
     );
 }
 
-#[allow(unused)]
+#[doc(hidden)]
+#[macro_export]
 macro_rules! __idx {
     ($x: expr, $j: expr; $stride: expr) => (
         $stride[$x] * $j
     );
     ($x: expr, $j: expr, $($i: expr),+; $stride: expr) => (
-        ($stride[$x] * $j) + __idx!($x + 1usize, $($i),+; $stride)
+        ($stride[$x] * $j) + $crate::__idx!($x + 1usize, $($i),+; $stride)
     );
 }
 
