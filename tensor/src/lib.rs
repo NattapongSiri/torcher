@@ -50,7 +50,7 @@ extern crate common;
 extern crate storage;
 extern crate tensor_derive;
 
-use core::ops::Range;
+use core::ops::{Index, IndexMut, Range};
 use common::THDescBuff;
 use std::cmp;
 use std::iter::Iterator;

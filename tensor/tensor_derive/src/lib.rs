@@ -1257,6 +1257,42 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             }
         }
 
+        impl Index<&[usize]> for #ident {
+            type Output = #t;
+
+            fn index(&self, idx: &[usize]) -> &Self::Output {
+                let stride = self.shape().1;
+                let actual_idx = idx.iter().enumerate().fold(0, |cum, (i, index)| {
+                    cum + (index * stride[i])
+                });
+                &self.data()[actual_idx]
+            }
+        }
+
+        impl IndexMut<usize> for #ident {
+            fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
+                &mut self.data_mut()[idx]
+            }
+        }
+
+        impl IndexMut<&[usize]> for #ident {
+            fn index_mut(&mut self, idx: &[usize]) -> &mut Self::Output {
+                let stride = self.shape().1;
+                let actual_idx = idx.iter().enumerate().fold(0, |cum, (i, index)| {
+                    cum + (index * stride[i])
+                });
+                &mut self.data_mut()[actual_idx]
+            }
+        }
+
+        impl Index<usize> for #ident {
+            type Output = #t;
+
+            fn index(&self, idx: usize) -> &Self::Output {
+                &self.data()[idx]
+            }
+        }
+
         impl<'a> IntoIterator for &'a #ident {
             type Item = #t;
             type IntoIter = TensorIterator<'a, #t>;
