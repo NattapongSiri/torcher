@@ -1,3 +1,4 @@
+#![feature(specialization)]
 include!(concat!(env!("OUT_DIR"), "/sys.rs"));
 
 /// Unit struct to represent a ref to Caffe2 storage
@@ -11,21 +12,54 @@ pub struct Storage<T> where T: Send {
     storage: *mut TorchStorage
 }
 
-pub trait StorageOp<T> where T: Send {
-    fn new() -> Storage<T>;
-    fn new_with_size(size: usize) -> Storage<T>;
-    fn data(&self) -> &[T];
-    fn data_mut(&mut self) -> &mut [T];
-    fn forget(&mut self);
-    fn fill(&mut self, scalar: T);
-    fn resize(&mut self, size: usize);
-    fn retain(&mut self);
-    fn size(&self) -> usize;
-    fn swap(&mut self, other: &mut Storage<T>);
-    fn free(&mut self);
+/// A trait that define supported operation on Tensor storage.
+/// The actual implementation can be found in build script.
+/// The default implementation will always yell `unimplemented!`
+pub trait StorageOp{
+    type Datatype: Send;
+
+    fn new() -> Storage<Self::Datatype> {
+        unimplemented!()
+    }
+    fn new_with_size(size: usize) -> Storage<Self::Datatype> {
+        unimplemented!()
+    }
+    fn data(&self) -> &[Self::Datatype] {
+        unimplemented!()
+    }
+    fn data_mut(&mut self) -> &mut [Self::Datatype] {
+        unimplemented!()
+    }
+    fn forget(&mut self) {
+        unimplemented!()
+    }
+    fn fill(&mut self, scalar: Self::Datatype) {
+        unimplemented!()
+    }
+    fn resize(&mut self, size: usize) {
+        unimplemented!()
+    }
+    fn retain(&mut self) {
+        unimplemented!()
+    }
+    fn size(&self) -> usize {
+        unimplemented!()
+    }
+    fn swap(&mut self, other: &mut Storage<Self::Datatype>) {
+        unimplemented!()
+    }
+    fn free(&mut self) {
+        unimplemented!()
+    }
 }
 
-impl<T> Drop for T where for<U> T: StorageOp<U> {
+/// Default implementation on all other type that is not supported
+/// by this `Storage` datatype
+impl<T> StorageOp for Storage<T> where T: Send {
+    default type Datatype = T;
+}
+
+impl<T> Drop for Storage<T> where T: Send {
     fn drop(&mut self) {
         self.free();
     }

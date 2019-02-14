@@ -35,7 +35,9 @@ fn generate_caffe2_fn(dt: &[(&str, &str)], f: &mut File) {
 fn impl_storages(dt: &[(&str, &str)], f: &mut File) {
     for ty in dt {
         f.write_all(format!("
-            impl StorageOp<{t}> for Storage<{t}> {{
+            impl StorageOp for Storage<{t}> {{
+                type Datatype={t};
+
                 fn new() -> Storage<{t}> {{
                     unsafe {{
                         let sys_storage = {pref}_new();
@@ -95,10 +97,14 @@ fn impl_storages(dt: &[(&str, &str)], f: &mut File) {
                     self.size
                 }}
                 fn swap(&mut self, other: &mut Storage<{t}>) {{
-                    {pref}_swap(self.storage, other.storage);
+                    unsafe {{
+                        {pref}_swap(self.storage, other.storage);
+                    }}
                 }}
                 fn free(&mut self) {{
-                    {pref}_free(self.storage);
+                    unsafe {{
+                        {pref}_free(self.storage);
+                    }}
                 }}
             }}
         ",
@@ -106,6 +112,19 @@ fn impl_storages(dt: &[(&str, &str)], f: &mut File) {
         t=ty.0).as_bytes()).expect(format!("Fail write \"impl Storage<{}>\"", ty.0).as_str());
     }
 }
+
+// fn impl_drops(dt: &[(&str, &str)], f: &mut File) {
+//     for ty in dt {
+//         f.write_all(format!("
+//             impl Drop for Storage<{t}> {{
+//                 fn drop(&mut self) {{
+//                     self.free();
+//                 }}
+//             }}
+//         ",
+//         t=ty.0).as_bytes()).expect(format!("Fail write \"impl Drop for Storage<{}>\"", ty.0).as_str());
+//     }
+// }
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -122,5 +141,6 @@ fn main() {
     ];
     generate_caffe2_fn(&caffe2_prefix, &mut f);
     impl_storages(&caffe2_prefix, &mut f);
+    // impl_drops(&caffe2_prefix, &mut f);
     println!(r"cargo:rustc-link-search=clib");
 }
