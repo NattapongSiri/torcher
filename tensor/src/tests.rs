@@ -311,16 +311,32 @@ fn float_narrow_on() {
 fn float_new_narrow() {
     let mut storage = FloatStorage::new_with_size(10);
     storage[4] = 2f32;
-    storage[5] = 1f32;
+    storage[6] = 1f32;
     unsafe {
         let ts = FloatTensor::new_with_storage_2d(storage, 1, [4, 2], 2);
+        // [[1, 2], [3, 4], [5, 6], [7, 8]]
+        // [[2], [4], [6], [8]]
+        // [[4], [6]]
         let sel = ts.new_narrow(1, 1, 1).new_narrow(0, 1, 2);
-        
         assert_eq!("torch.xTensor of size 2x1", sel.desc());
-        assert_eq!([2f32, 1f32] , sel[0..2]);
+        assert_eq!([2f32, 1f32] , [sel[&[0usize, 0] as &[usize]], sel[&[1usize, 0] as &[usize]]]);
     }
 }
 
+#[test]
+fn float_new_narrow_1d() {
+    let mut storage = FloatStorage::new_with_size(10);
+    storage[4] = 2f32;
+    storage[6] = 1f32;
+    unsafe {
+        let ts = FloatTensor::new_with_storage_1d(storage, 0, 10);
+        // virtually shallow clone
+        let sel = ts.new_narrow(0, 0, 10);
+        assert_eq!("torch.xTensor of size 10", sel.desc());
+        // the data length must be exactly the same
+        assert_eq!(sel.data().len(), 10);
+    }
+}
 #[test]
 fn float_transpose() {
     let mut storage = FloatStorage::new_with_size(10);
@@ -553,7 +569,7 @@ fn float_set_2d() {
         }
     }
 
-    assert_eq!(validate, ts[0..8])
+    assert_eq!(validate, ts.data()[0..8])
 }
 
 #[test]
@@ -590,7 +606,7 @@ fn float_set_4d() {
             }
         }
     }
-    assert_eq!(validate, ts[0..8])
+    assert_eq!(validate, ts.data()[0..8])
 }
 
 #[test]

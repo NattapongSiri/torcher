@@ -279,7 +279,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     cur_stride
                 }).collect();
 
-                let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let storage_bound = match big_bound {
+                    0 => size[size.len() - 1],
+                    n => big_bound + size[size.len() - 1] - 1
+                };
                 let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
@@ -312,7 +315,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     cur_stride
                 }).collect();
 
-                let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let storage_bound = match big_bound {
+                    0 => size[size.len() - 1],
+                    n => big_bound + size[size.len() - 1] - 1
+                };
                 let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
@@ -345,7 +351,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     cur_stride
                 }).collect();
 
-                let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let storage_bound = match big_bound {
+                    0 => size[size.len() - 1],
+                    n => big_bound + size[size.len() - 1] - 1
+                };
                 let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
@@ -378,7 +387,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     cur_stride
                 }).collect();
 
-                let storage_bound = big_bound + size[size.len() - 1] - 1;
+                let storage_bound = match big_bound {
+                    0 => size[size.len() - 1],
+                    n => big_bound + size[size.len() - 1] - 1
+                };
                 let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
 
                 #ident {
@@ -427,7 +439,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
@@ -461,7 +476,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
@@ -495,7 +513,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let mut stride = stride.to_vec();
                     stride.push(1); // last dim stride for sake of consistency
                     let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
@@ -525,7 +546,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                     }
                 }
 
-                storage_len += size[size.len() - 1] - 1;
+                storage_len += match storage_len {
+                    0 => size[size.len() - 1],
+                    n => size[size.len() - 1] - 1
+                };
                 let mut stride = stride.to_owned();
 
                 if stride.len() == size.len() - 1 {
@@ -550,7 +574,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let mut stride = stride.to_vec();
                     let storage = #store_ty_id::from(#storage_fn(tensor)).forget();
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
@@ -610,7 +637,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
@@ -648,7 +678,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
@@ -687,7 +720,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         cur_stride
                     }).collect();
 
-                    let storage_bound = big_bound + size[size.len() - 1] - 1;
+                    let storage_bound = match big_bound {
+                        0 => size[size.len() - 1],
+                        n => big_bound + size[size.len() - 1] - 1
+                    };
                     let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
                     
                     // storage memory in this mode is managed by Caffe2. We need to forget it or it'll be freed twice.
@@ -842,7 +878,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         }
                     }
 
-                    storage_bound += size[size.len() - 1] - 1;
+                    storage_bound += match storage_bound {
+                        0 => size[size.len() - 1],
+                        n => size[size.len() - 1] - 1
+                    };
                     self.storage_bound = storage_bound;
                     let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound) as *mut [#t];
                 }
@@ -897,7 +936,10 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         }
                     }
 
-                    storage_bound += size[size.len() - 1] - 1;
+                    storage_bound += match storage_bound {
+                        0 => size[size.len() - 1],
+                        n => size[size.len() - 1] - 1
+                    };
                     self.storage_bound = storage_bound;
                     let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound) as *mut [#t];
                 }
