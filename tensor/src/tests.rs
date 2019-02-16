@@ -50,6 +50,14 @@ fn float_create_4d_desc() {
 }
 
 #[test]
+fn float_create_nd_desc() {
+    let storage = FloatStorage::new_with_size(10);
+    let ts = FloatTensor::new_with_storage_nd(storage, 0, &[2, 2, 2, 1], &[4, 2, 1, 1]);
+    assert_eq!("torch.xTensor of size 2x2x2x1", ts.desc());
+    assert_eq!(ts.data().len(), 8);
+}
+
+#[test]
 fn float_create_empty_1d_desc() {
     let ts = FloatTensor::new_with_size_1d(8);
     assert_eq!("torch.xTensor of size 8", ts.desc());
@@ -65,12 +73,14 @@ fn float_create_empty_2d_desc() {
 fn float_create_empty_3d_desc() {
     let ts = FloatTensor::new_with_size_3d([3, 2, 1]);
     assert_eq!("torch.xTensor of size 3x2x1", ts.desc());
+    assert_eq!(ts.shape().1, &[2, 1, 1]);
 }
 
 #[test]
 fn float_create_empty_4d_desc() {
-    let ts = FloatTensor::new_with_size_4d([4, 3, 2, 1]);
-    assert_eq!("torch.xTensor of size 4x3x2x1", ts.desc());
+    let ts = FloatTensor::new_with_size_4d([4, 3, 2, 5]);
+    assert_eq!("torch.xTensor of size 4x3x2x5", ts.desc());
+    assert_eq!(ts.shape().1, &[30, 10, 5, 1]);
 }
 
 #[test]
@@ -89,9 +99,8 @@ fn float_create_unfold() {
 fn float_data() {
     let mut storage = FloatStorage::new_with_size(10);
     storage.iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
-    let tensor = FloatTensor::new_with_storage_3d(storage, 1, [3, 2, 2], [2, 1]);
-    
-    let validator = &[1.0f32, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 5.0, 5.0, 6.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0];
+    let tensor = FloatTensor::new_with_storage_3d(storage, 1, [3, 1, 2], [2, 2]);
+    let validator = &[1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
     
     (&tensor).into_iter().enumerate().for_each(|(i, v)| assert_eq!(validator[i], v));
 }
@@ -667,6 +676,7 @@ fn float_view() {
     let expected_size : &[usize] = &[5, 2];
     let expected_stride: &[usize] = &[2, 1];
     assert_eq!((expected_size, expected_stride), ts_v.shape());
+    assert_eq!(ts_v.data().len(), 10);
 }
 
 #[test]
