@@ -90,6 +90,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     let new_with_size_4d_fn = _make_ident(&c_ty, "_newWithSize4d");
     let free_fn = _make_ident(&c_ty, "_free");
 
+    let cat_fn = _make_ident(&c_ty, "_catArray");
     let data_fn = _make_ident(&c_ty, "_data");
     let desc_fn = _make_ident(&c_ty, "_desc");
     let dim_fn = _make_ident(&c_ty, "_nDimension");
@@ -151,6 +152,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #new_with_size_4d_fn(size_1: i64, size_2: i64, size_3: i64, size_4: i64) -> *mut #c_ty_id;
             fn #free_fn(tensor: *mut #c_ty_id);
 
+            fn #cat_fn(result: *mut #c_ty_id, inputs: *const*const #c_ty_id, input_len: i64, dim: i64);
             fn #data_fn(tensor: *mut #c_ty_id) -> *mut #t;
             fn #desc_fn(tensor: *mut #c_ty_id) -> THDescBuff;
             fn #dim_fn(tensor: *const #c_ty_id) -> c_int;
@@ -236,6 +238,41 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                         size: Vec::new(),
                         stride: Vec::new()
                     }
+                }
+            }
+
+            fn new_concat(&self, tensors: &[Self], dim: usize) -> Self {
+                unsafe {
+                    // construct *const *const #c_ty_id. A pointer to pointer to tensor
+                    let mut buffer = Vec::new();
+                    buffer.push(self.tensor as *const #c_ty_id);
+                    tensors.iter().for_each(|ts| buffer.push(ts.tensor as *const #c_ty_id));
+                    let mut new_ts = Self::new(); // create new contiguous tensor
+                    
+                    #cat_fn(
+                        new_ts.tensor, 
+                        buffer.as_ptr(),
+                        buffer.len() as i64,
+                        dim as i64
+                    );
+
+                    // update size and stride
+                    let last_dim = self.shape().0.len();
+                    let mut sizes = Vec::with_capacity(dim);
+                    let mut strides = Vec::with_capacity(dim);
+                    (0..last_dim).for_each(|i| {
+                        sizes.push(#size_fn(new_ts.tensor, i as i32) as usize);
+                        strides.push(#stride_fn(new_ts.tensor, i as i32) as usize);
+                    });
+                    new_ts.size = sizes;
+                    new_ts.stride = strides;
+                    
+                    // perform data map on new tensor
+                    new_ts.storage = Some(#store_ty_id::from(#storage_fn(new_ts.tensor)).forget());
+                    let storage_bound = new_ts.size[0] * new_ts.stride[0];
+                    new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), storage_bound) as *mut [#t];
+
+                    new_ts
                 }
             }
 

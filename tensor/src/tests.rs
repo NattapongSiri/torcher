@@ -10,6 +10,19 @@ fn byte_to_char() {
 }
 
 #[test]
+fn float_concat() {
+    let mut ts_1 = FloatTensor::new_with_size_2d([5, 2]);
+    ts_1.data_mut().iter_mut().enumerate().for_each(|(i, v)| *v = i as f32);
+    let mut ts_2 = FloatTensor::new_with_size_2d([5, 2]);
+    ts_2.data_mut().iter_mut().enumerate().for_each(|(i, v)| *v = (i + 10) as f32);
+    let ts = ts_1.new_concat(&[ts_2], 0);
+
+    ts.data().iter().enumerate().for_each(|(i, v)| {
+        assert_eq!(i as f32, *v);
+    });
+}
+
+#[test]
 fn float_create_drop() {
     FloatTensor::new();
 }

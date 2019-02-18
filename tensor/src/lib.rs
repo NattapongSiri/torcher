@@ -73,7 +73,6 @@ use std::fmt;
 /// related operation.
 pub trait BasicManipulateOp<S: TensorStorage> {
     type Datum;
-
     /// Return a slice of underlying data. The size of data is 
     /// exactly equals to actual data being represent by this tensor.
     /// # Examples
@@ -190,11 +189,21 @@ pub trait BasicManipulateOp<S: TensorStorage> {
 }
 
 /// Tensor create operation.
-pub trait CreateOp<S: TensorStorage> {
+pub trait CreateOp<S>
+where S: TensorStorage,
+      Self: Sized
+{
     type Datum;
 
     /// Construct an empty tensor
     fn new() -> Self;
+    /// Concatenate current tensor by given tensors.
+    /// It create new empty tensor then copy self into
+    /// the tensor then concat all the given tensors into the tensor.
+    /// It return a newly created concatenated tensor.
+    /// 
+    /// This is costly OP as it require copying from every tensor.
+    fn new_concat(&self, tensor: &[Self], dim: usize) -> Self;
     /// Always return a new deep clone tensor with contiguous storage according to current size.
     /// In Python, it'll return the same Tensor if it's already contiguous.
     /// So to get similar effect, consider use [is_contiguous](trait.Tensor.html#tymethod.is_contiguous)
