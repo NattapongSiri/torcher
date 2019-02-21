@@ -6,7 +6,10 @@ fn byte_to_char() {
     bytes.data_mut().iter_mut().enumerate().for_each(|(i, b)| *b = i as u8);
     let chars = CharTensor::from(&bytes);
     // elementwise, it's equals.
-    chars.iter().zip(bytes.iter()).for_each(|(c, b)| assert_eq!(c, b as i8));
+    chars.iter().zip(bytes.iter()).for_each(|(c, b)| {
+        dbg!(&c);
+        assert_eq!(c, b as i8);
+    });
 }
 
 #[test]

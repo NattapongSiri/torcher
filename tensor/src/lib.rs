@@ -545,23 +545,24 @@ where T: 'a
 {
     cur_i: Vec<usize>,
     cur_j: usize,
-    cur_offset: Vec<usize>,
 
     data: &'a [T],
-    size: &'a [usize],
+    size: Vec<usize>,
     stride: &'a [usize]
 }
 
 impl<'a, T> TensorIterator<'a, T> {
     pub fn new(data: &'a [T], size: &'a [usize], stride: &'a [usize]) -> TensorIterator<'a, T> {
         let n = size.len() - 1;
+        let adjusted_size = size.iter().enumerate().map(|(i, v)| {
+            *v * stride[i]
+        }).collect();
         TensorIterator {
             cur_i: vec![0; n],
             cur_j: 0,
-            cur_offset: vec![0; n],
 
             data: data,
-            size: size,
+            size: adjusted_size,
             stride: stride
         }
     }
@@ -573,33 +574,28 @@ where T: Copy
     type Item=T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        fn update_cursor(cur_i: &mut [usize], cur_offset: &mut [usize], n: usize, offset: usize) {
-            cur_offset[n] += offset;
-
+        fn update_cursor(cur_i: &mut [usize], n: usize) {
             // reset offset and i for those dim after the next one.
-            for i in (n + 1)..cur_offset.len() {
+            for i in (n + 1)..cur_i.len() {
                 cur_i[i] = 0;
-                cur_offset[i] = 0;
             }
         }
 
         let mut n = self.size.len() - 1;
 
         if self.cur_j < self.size[n] {
-            let offset = self.cur_i.iter().enumerate().fold(0, |o, (idx, _)| {
-                o + self.cur_offset[idx]
-            });
+            let offset: usize = self.cur_i.iter().sum();
 
             let result = Some(self.data[offset + self.cur_j]);
-            self.cur_j += 1;
+            self.cur_j += self.stride[n];
             result
         } else {
             n -= 1;
 
             while n > 0 {
-                self.cur_i[n] += 1;
+                self.cur_i[n] += self.stride[n];
                 if self.cur_i[n] < self.size[n] {
-                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                    update_cursor(&mut self.cur_i, n);
                     
                     break;
                 } else {
@@ -608,9 +604,9 @@ where T: Copy
             }
 
             if n == 0 {
-                self.cur_i[n] += 1;
+                self.cur_i[n] += self.stride[n];
                 if self.cur_i[n] < self.size[n] {
-                    update_cursor(&mut self.cur_i, &mut self.cur_offset, n, self.stride[n]);
+                    update_cursor(&mut self.cur_i, n);
                 } else {
                     return None;
                 }

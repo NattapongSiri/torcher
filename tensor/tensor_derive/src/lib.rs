@@ -384,36 +384,21 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 let storage: #store_ty_id = #storage_fn(tensor).into();
                 let mut size = Vec::new();
                 let dim = #dim_fn(tensor) as usize;
-                let mut big_bound = 0;
-                let mut unit_size = 1;
+
                 let stride : Vec<usize> = (0usize..dim).map(|i| {
                     let cur_stride = #stride_fn(tensor, i as i32) as usize;
                     let cur_size = #size_fn(tensor, i as i32) as usize;
                     size.push(cur_size);
-                    let cur_bound = cur_stride * size[i];
-
-                    if cur_bound > big_bound && i < dim - 1 {
-                        big_bound = cur_bound;
-                    }
-
-                    if cur_stride == 1 {
-                        unit_size = size[i];
-                    }
 
                     cur_stride
                 }).collect();
-
-                let storage_bound = match big_bound {
-                    0 => unit_size,
-                    n => big_bound
-                };
-                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), storage_bound);
+                let data = std::slice::from_raw_parts_mut(#data_fn(tensor), self.storage_bound);
 
                 #ident {
                     data: data,
                     forget: false,
                     storage: Some(storage.forget()),
-                    storage_bound: storage_bound,
+                    storage_bound: self.storage_bound,
                     tensor: tensor,
                     size: size,
                     stride: stride
