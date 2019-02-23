@@ -119,6 +119,7 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
     let storage_offset_fn = _make_ident(&c_ty, "_storageOffset");
     let stride_fn = _make_ident(&c_ty, "_stride");
     let squeeze_fn = _make_ident(&c_ty, "_squeeze");
+    let squeeze_1d_fn = _make_ident(&c_ty, "_squeeze1d");
 
     let expanded = quote! {
         use storage::#c_storage_ty_id;
@@ -180,7 +181,8 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             fn #storage_fn(tensor: *mut #c_ty_id) -> *mut #c_storage_ty_id;
             fn #storage_offset_fn(tensor: *const #c_ty_id) -> i64;
             fn #stride_fn(tensor: *const #c_ty_id, dim: c_int) -> i64;
-            fn #squeeze_fn(tensor: *mut #c_ty_id, res: *mut #c_ty_id);
+            fn #squeeze_fn(tensor: *const #c_ty_id, res: *mut #c_ty_id);
+            fn #squeeze_1d_fn(tensor: *const #c_ty_id, res: *mut #c_ty_id, dim: i64);
         }
 
         pub struct #ident {
@@ -1226,7 +1228,6 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
 
                 let storage = #store_ty_id::from(#storage_fn(self.tensor)).forget();
                 #ident::new_with_storage_nd(storage, offset, &new_size, &cur_stride)
-                
             }
 
             fn narrow_on(self, dim: usize, new_bound: Range<usize>) -> Result<TensorView<#ident>, NarrowError> {
@@ -1305,6 +1306,23 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
                 storage_bound += new_ts.size[dim as usize - 1];
                 new_ts.storage_bound = storage_bound;
                 new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), storage_bound);
+                new_ts
+            }
+
+            unsafe fn unsafe_squeeze_dim(&self, dim: usize) -> #ident {
+                let mut new_ts = Self::new();
+                #squeeze_1d_fn(new_ts.tensor, self.tensor, dim as i64);
+                new_ts.data = std::slice::from_raw_parts_mut(#data_fn(new_ts.tensor), self.storage_bound);
+                new_ts.storage_bound = self.storage_bound;
+                new_ts.stride = self.stride.to_owned();
+                new_ts.size = self.size.to_owned();
+
+                // only when size[dim] == 1 that squeeze will have effect
+                if self.size[dim] == 1 {
+                    new_ts.size.remove(dim);
+                    new_ts.stride.remove(dim);
+                }
+
                 new_ts
             }
 

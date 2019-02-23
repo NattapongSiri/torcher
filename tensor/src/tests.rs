@@ -670,6 +670,27 @@ fn float_squeeze() {
 }
 
 #[test]
+fn float_squeeze_dim() {
+    unsafe {
+        let mut storage = FloatStorage::new_with_size(10);
+        for i in 0..storage.len() {
+            storage[i] = i as f32;
+        }
+        let ts = FloatTensor::new_with_storage_4d(storage, 2, [2, 1, 2, 1], [2, 2, 1]);
+        // [[[[2], [3]]], [[[4], [5]]]]
+
+        let squeezed = ts.unsafe_squeeze_dim(1);
+
+        assert_eq!(&[2usize, 2, 1], squeezed.shape().0);
+        let expected = [2f32, 3.0, 4.0, 5.0];
+
+        ts.iter().zip(expected.iter()).for_each(|(v, e)| {
+            assert_eq!(v, *e);
+        });
+    }
+}
+
+#[test]
 fn float_unsafe_squeeze() {
     let mut storage = FloatStorage::new_with_size(10);
     for i in 0..storage.len() {

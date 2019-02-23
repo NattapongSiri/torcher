@@ -453,9 +453,13 @@ pub trait ViewOp<T: Tensor> {
     /// that have size 1 and return the new squeezed TensorView
     fn squeeze(self) -> TensorView<T>;
     /// Perform unsafe tensor squeeze.
-    /// It is unsafe because it use raw pointer to create
+    /// It is unsafe because it use raw pointer of storage to create
     /// a squeezed tensor.
     unsafe fn unsafe_squeeze(&self) -> T;
+    /// Perform unsafe tensor squeeze on specific dim.
+    /// It is unsafe because it return new tensor that unsafely
+    /// share storage with self via raw pointer.
+    unsafe fn unsafe_squeeze_dim(&self, dim: usize) -> T;
     /// Narrow down a view as per new given bound.
     /// The size need to be smaller than current size.
     /// There's strict rule on when is it possible to create view.
@@ -853,6 +857,10 @@ where T: Tensor
 
     unsafe fn unsafe_narrow(&self, bound: &[Range<usize>]) -> T {
         self.view.unsafe_narrow(bound)
+    }
+
+    unsafe fn unsafe_squeeze_dim(&self, dim: usize) -> T {
+        self.view.unsafe_squeeze_dim(dim)
     }
 
     /// Perform narrow down the view on given dimension. 
