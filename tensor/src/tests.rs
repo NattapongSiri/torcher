@@ -567,6 +567,10 @@ fn float_resize_nd() {
     for i in 0..ts.dimensions() {
         assert_eq!(ts.size(i), size[i]);
     }
+
+    let expected = [1, 2, 3, 4, 5, 6, 7, 8];
+
+    ts.iter().enumerate().for_each(|(i, v)| assert_eq!(v, expected[i] as f32));
 }
 
 #[cfg(feature = "serde")]

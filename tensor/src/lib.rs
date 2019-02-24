@@ -73,7 +73,8 @@ use std::fmt;
 /// from C FFI
 fn _data_bound(sizes: &[usize], stride: &[usize]) -> usize {
     debug_assert!(sizes.len() == stride.len(), "sizes and stride must have identical number of element");
-    sizes.iter().zip(stride.iter()).fold(0, |cum, (si, st)| cum + (*si - 1) * *st)
+    let n = sizes.len() - 1;
+    sizes[..n].iter().zip(stride[..n].iter()).fold(0, |cum, (si, st)| cum + (*si - 1) * *st) + sizes[n] * stride[n]
 }
 
 /// Basic tensor operation for simple data manipulation.
