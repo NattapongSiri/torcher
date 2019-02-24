@@ -349,6 +349,42 @@ fn float_new_narrow() {
 }
 
 #[test]
+fn float_new_narrow_single_dim() {
+    let mut ts = FloatTensor::new_with_size_1d(10);
+    ts.data_mut().iter_mut().enumerate().for_each(|(i, d)| *d = i as f32);
+    unsafe {
+        let narrowed = ts.new_narrow(0, 1, 2);
+        /*
+        * now shape is [2] and stride is [1] but offset on data is now 1 
+        */
+        let expected = [1i32, 2];
+        narrowed.iter().zip(expected.iter()).for_each(|(v, e)| {
+            assert_eq!(v, *e as f32);
+        });
+    }
+}
+
+#[test]
+fn float_new_narrow_dup_stride() {
+    let mut ts = FloatTensor::new_with_size_1d(10);
+    ts.data_mut().iter_mut().enumerate().for_each(|(i, d)| *d = i as f32);
+    unsafe {
+        let dup_ts = ts.new_unfold(0, 5, 1); // tensor with duplicate stride
+        /*
+        * now shape is [6, 5] and stride is [1, 1] 
+        */
+        let narrowed = dup_ts.new_narrow(0, 1, 2);
+        /*
+        * now shape is [2, 5] and stride is [1, 1] but offset on data is now 1 
+        */
+        let expected = [[1i32, 2, 3, 4, 5], [2i32, 3, 4, 5, 6]];
+        narrowed.iter().zip(expected.iter().flat_map(|i| i)).for_each(|(v, e)| {
+            assert_eq!(v, *e as f32);
+        });
+    }
+}
+
+#[test]
 fn float_new_narrow_1d() {
     let mut storage = FloatStorage::new_with_size(10);
     storage[4] = 2f32;
