@@ -593,7 +593,7 @@ where T: Copy
             let result = Some(self.data[offset + self.cur_j]);
             self.cur_j += self.stride[n];
             result
-        } else {
+        } else if n > 0 {
             n -= 1;
 
             while n > 0 {
@@ -617,6 +617,8 @@ where T: Copy
             }
             self.cur_j = 0;
             self.next()
+        } else {
+            None
         }
     }
 }
