@@ -68,6 +68,14 @@ use serde::de::{Deserialize, Deserializer, Visitor, MapAccess};
 #[cfg(feature="serde")]
 use std::fmt;
 
+/// Utitlity function to calculate data boundary.
+/// This function is useful for determine the boundary of pointer return
+/// from C FFI
+fn _data_bound(sizes: &[usize], stride: &[usize]) -> usize {
+    debug_assert!(sizes.len() == stride.len(), "sizes and stride must have identical number of element");
+    sizes.iter().zip(stride.iter()).fold(0, |cum, (si, st)| cum + (*si - 1) * *st)
+}
+
 /// Basic tensor operation for simple data manipulation.
 /// This includes data read/write operation and tensor shape
 /// related operation.

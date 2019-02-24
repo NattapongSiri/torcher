@@ -196,7 +196,6 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
         }
 
         impl #ident {
-
             /// Get short description of storage.
             /// This includes name of storage, size, and
             /// sample data if it has more than 20 elements.
@@ -978,34 +977,18 @@ pub fn TorchTensor(args : TokenStream, item : TokenStream) -> TokenStream {
             // }
 
             fn resize_nd(&mut self, size: &[usize], stride: &[usize]) {
-                assert_eq!(size.len() - 1, stride.len(), "Stride must have exactly {} elements", size.len() - 1);
+                assert!((size.len() - 1 == stride.len()) || (size.len() == stride.len()), "Stride must have exactly {} elements or have exactly equals number of elements to size", size.len() - 1);
                 
                 unsafe {
                     self.size = size.to_owned();
                     self.stride = stride.to_owned();
-                    self.stride.push(1); // just to conform to Caffe2 API
+                    if stride.len() < size.len() {
+                        self.stride.push(1); // just to conform to Caffe2 API
+                    }
                     #resize_nd_fn(self.tensor, size.len() as c_int, size.as_ptr() as *const i64, self.stride.as_ptr() as *const i64);
 
-                    let mut big_bound = 0;
-                    let mut unit_size = 1;
-                    size.iter().zip(stride.iter()).for_each(|(size, stride)| {
-                        let cur_bound = *size * *stride;
-
-                        if cur_bound > big_bound {
-                            big_bound = cur_bound;
-                        }
-
-                        if *stride == 1 {
-                            unit_size = *size;
-                        }
-                    });
-
-                    let storage_bound = match big_bound {
-                        0 => unit_size,
-                        n => big_bound
-                    };
-                    self.storage_bound = storage_bound;
-                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), storage_bound) as *mut [#t];
+                    self.storage_bound = _data_bound(&self.size, &self.stride);
+                    let data = std::slice::from_raw_parts_mut(#data_fn(self.tensor), self.storage_bound) as *mut [#t];
                 }
             }
 
