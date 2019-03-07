@@ -19,9 +19,11 @@ This project directly use Caffe2 library inside PyTorch to construct an underlyi
       2. caffe2.dll and caffe2.lib
       3. libiomp5md.dll
    - In Linux, copy only libcaffe2.so file
+   - In Mac, copy libcaffe2.dylib and libc10.dylib files
 5. Set environment variable to make linker know where to find the lib
     - In MS. Windows, set `PATH` to include directory `clib`
     - In Linux, set `LD_LIBRARY_PATH` to include directory `clib`
+    - In Mac, set `LD_LIBRARY_PATH` to include directory `clib`
 
 # Use case
 - populate fixed size tensor 
